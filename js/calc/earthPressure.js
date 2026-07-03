@@ -1,9 +1,37 @@
-// 試行くさび法による主働土圧（盛土部擁壁・背面土砂レベル）
+// 試行くさび法による主働土圧（盛土部擁壁）
 // 常時   : PA  = {W・sin(ω-φ) - c・l・cosφ}・L / cos(ω-φ-α-δ)
 // 地震時 : PEA = {W・sin(ω-φ+θ)/cosθ - c・l・cosφ}・L / cos(ω-φ-α-δ)   θ=tan⁻¹(kh)
-// すべり面は壁踵(底版背面端)を通り、くさびは壁背面・地表面(レベル)・すべり面で囲まれる三角形。
+// すべり面は壁踵(底版背面端)を通る平面。
+// 背面土砂形状: レベル、または壁背面位置から勾配1:nで嵩上げ高さhまで立ち上がりその先レベル(盛土)。
 
 const RAD = Math.PI / 180;
+
+function shoelace(poly) {
+  let s = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const [x1, y1] = poly[i];
+    const [x2, y2] = poly[(i + 1) % poly.length];
+    s += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(s) / 2;
+}
+
+// 多角形の y ≦ yc の部分を切り出す（Sutherland-Hodgman）
+function clipBelow(poly, yc) {
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    const ain = a[1] <= yc + 1e-12;
+    const bin = b[1] <= yc + 1e-12;
+    if (ain) out.push(a);
+    if (ain !== bin) {
+      const t = (yc - a[1]) / (b[1] - a[1]);
+      out.push([a[0] + t * (b[0] - a[0]), yc]);
+    }
+  }
+  return out;
+}
 
 // 1つのすべり角ωに対する土圧合力
 function wedgeAt(omegaDeg, p) {
@@ -12,18 +40,47 @@ function wedgeAt(omegaDeg, p) {
   const alpha = p.alpha * RAD;
   const delta = p.delta * RAD;
   const theta = Math.atan(p.kh || 0);
+  const tanW = Math.tan(om);
+  const raise = p.raise || 0;
+  const n = p.slopeN || 0;
 
-  // くさび上面幅 T = H・(cotω + tanα)
-  const T = p.H * (1 / Math.tan(om) + Math.tan(alpha));
-  if (!(T > 0)) return null;
-  const A = 0.5 * T * p.H;
+  // 壁背面と土砂天端の交点
+  const xb = p.heelX - p.H * Math.tan(alpha);
 
-  // 背面水位以下は水中単位体積重量（幅は高さに比例するため面積比 = (hw/H)^2）
+  // くさび多角形（踵 → 壁背面天端 → 地表面 → すべり線先端）
+  let poly, end;
+  if (raise > 0 && n > 0) {
+    // すべり線 y=(x-heelX)tanω と法面 y=H+(x-xb)/n の交点
+    const denom = tanW - 1 / n;
+    if (denom <= 1e-12) return null; // すべり線が法面より緩い → くさび不成立
+    const xi = (p.H - xb / n + p.heelX * tanW) / denom;
+    const yi = (xi - p.heelX) * tanW;
+    if (xi <= xb + 1e-12) return null;
+    if (yi <= p.H + raise + 1e-12) {
+      end = [xi, yi];
+      poly = [[p.heelX, 0], [xb, p.H], end];
+    } else {
+      const xi2 = p.heelX + (p.H + raise) / tanW;
+      end = [xi2, p.H + raise];
+      poly = [[p.heelX, 0], [xb, p.H], [xb + n * raise, p.H + raise], end];
+    }
+  } else {
+    const xi = p.heelX + p.H / tanW;
+    if (xi <= xb + 1e-12) return null;
+    end = [xi, p.H];
+    poly = [[p.heelX, 0], [xb, p.H], end];
+  }
+
+  const A = shoelace(poly);
+  if (!(A > 0)) return null;
+
+  // 背面水位以下は水中単位体積重量
   const hw = Math.min(Math.max(p.waterLevel || 0, 0), p.H);
-  const Abelow = 0.5 * hw * hw * (T / p.H);
+  const Abelow = hw > 0 ? shoelace(clipBelow(poly, hw)) : 0;
   const sgA = p.gammaWet * (A - Abelow) + (p.gammaSub || 0) * Abelow;
 
-  // 上載荷重（壁背面天端位置からX1〜X2の範囲、くさび上面との重なり幅）
+  // 上載荷重（壁背面天端位置からX1〜X2、くさび上の地表面の水平投影幅との重なり）
+  const T = end[0] - xb;
   let Bq = 0;
   if (p.q > 0) {
     Bq = Math.max(0, Math.min(p.x2, T) - Math.max(p.x1, 0));
@@ -31,25 +88,27 @@ function wedgeAt(omegaDeg, p) {
   const sqB = (p.q || 0) * Bq;
 
   const W = sgA + sqB;
-  const l = p.H / Math.sin(om);
+  const l = Math.hypot(end[0] - p.heelX, end[1]);
   const cl = (p.c || 0) * l;
 
-  const denom = Math.cos(om - phi - alpha - delta);
-  if (denom <= 1e-9) return null;
+  const dcos = Math.cos(om - phi - alpha - delta);
+  if (dcos <= 1e-9) return null;
   const num = W * Math.sin(om - phi + theta) / Math.cos(theta) - cl * Math.cos(phi);
-  const PA = num * p.L / denom;
-  return { omega: omegaDeg, T, A, sgA, sqB, W, l, cl, PA };
+  const PA = num * p.L / dcos;
+  return { omega: omegaDeg, T, A, sgA, sqB, W, l, cl, PA, end, poly };
 }
 
 // パラメータ p:
-//  H:土圧作用高(m) alpha:壁背面と鉛直面のなす角(度) L:土圧作用幅(m)
+//  H:土圧作用高(m) alpha:壁背面と鉛直面のなす角(度) L:土圧作用幅(m) heelX:踵のx座標(=底版幅)
 //  gammaWet, gammaSub, waterLevel(底版底からの背面水位), phi, c, delta, kh,
-//  q, x1, x2(壁背面天端位置基準), precision(度), heelX(踵のx座標=底版幅)
+//  q, x1, x2(壁背面天端位置基準), precision(度),
+//  raise:嵩上げ高さ(m), slopeN:法面勾配1:nのn
 export function trialWedge(p) {
   const precision = p.precision || 0.001;
   const theta = Math.atan(p.kh || 0) / RAD;
-  // 掃引範囲: 分子が正となる ω > φ-θ から 90°手前まで
-  let lo = Math.max(p.phi - theta + 0.05, 1);
+  const beta = (p.raise || 0) > 0 && (p.slopeN || 0) > 0 ? Math.atan(1 / p.slopeN) / RAD : 0;
+  // 掃引範囲: 分子が正となる ω > φ-θ、かつ法面勾配より急な範囲
+  let lo = Math.max(p.phi - theta + 0.05, beta + 0.05, 1);
   let hi = 89.95;
 
   // グラフ用の粗い掃引 + 最大値の初期位置
@@ -98,7 +157,8 @@ export function trialWedge(p) {
   const z = (p.c || 0) > 0 ? 2 * p.c / p.gammaWet * Math.tan((45 + p.phi / 2) * RAD) : 0;
 
   return {
-    omega, curve,
+    omega, curve, beta,
+    end: r.end, poly: r.poly,
     sgA: r.sgA, sqB: r.sqB, W: r.W, cl: r.cl, z,
     L: p.L, PA, PAV, PAH, X, Y,
     MV: PAV * X, MH: PAH * Y,

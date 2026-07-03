@@ -28,7 +28,7 @@ function syncForm() {
   $('#grp-water').classList.toggle('disabled', !model.water.enabled);
   $('#grp-surcharge').classList.toggle('disabled', !model.surcharge.enabled);
   $('#grp-seismic').classList.toggle('disabled', !model.seismic.enabled);
-  $('#grp-member').classList.toggle('disabled', !model.member.show);
+  $('#grp-member').classList.toggle('disabled', !model.member.show && !model.member.calc);
 }
 
 // フォーム → モデル
@@ -57,6 +57,8 @@ function validate(m) {
   if (g.topWidth < 0 || g.topWidth > g.baseWidth) errs.push('天端幅は 0〜底版幅 の範囲としてください。');
   if (m.drop < 0 || m.drop >= g.height) errs.push('落差高さは 0〜壁高未満 としてください。');
   if (!(m.soil.phi > 0 && m.soil.phi < 60)) errs.push('せん断抵抗角φは 0〜60度 の範囲としてください。');
+  if (m.backfill.raise < 0) errs.push('嵩上げ高さは 0 以上としてください。');
+  if (m.backfill.raise > 0 && !(m.backfill.slopeN > 0)) errs.push('嵩上げ時は法面勾配 1:n の n を正の値としてください。');
   return errs;
 }
 
@@ -70,7 +72,7 @@ function update() {
   try {
     const result = compute(model);
     const { pageCount } = renderReport(result, $('#report-area'));
-    const ngCases = result.cases.filter((c) => !c.overturn.ok || !c.sliding.ok || !c.bearing.ok);
+    const ngCases = result.cases.filter((c) => !c.overturn.ok || !c.sliding.ok || !c.bearing.ok || (c.member && !c.member.ok));
     const ngText = ngCases.length
       ? `　<span class="ngmark">判定NG: ケース ${ngCases.map((c) => c.no).join(', ')}</span>`
       : '　全ケース判定OK';

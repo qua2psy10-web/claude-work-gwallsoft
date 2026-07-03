@@ -17,7 +17,10 @@ export function defaultInput() {
     wallKind: '盛土部擁壁',
     foundation: '直接基礎',
     structure: '重力式定型擁壁',
-    backfillShape: 'レベル',
+    backfill: {
+      raise: 0.0,         // 嵩上げ高さ (m)。0でレベル、>0で壁背面位置から盛土が立ち上がる
+      slopeN: 1.50,       // 法面勾配 1:n の n（raise>0 のとき有効）
+    },
     drop: 0.270,          // 擁壁天端からの落差高さ (m) → 土圧作用高 = 壁高 - 落差
     frontSoil: { normal: 0.0, seismic: 0.0 }, // 前載土砂高 (m)
     water: {
@@ -67,6 +70,9 @@ export function defaultInput() {
     },
     member: {
       show: true,                 // 部材計算条件を帳票に出力
+      calc: false,                // 応力度照査を行う（第5章 部材計算を出力）
+      kNormal: 1.00,              // 許容応力度の割増係数（常時）
+      kSeismic: 1.50,             // 許容応力度の割増係数（地震時）
       calcRebar: '算出しない',
       shearIncrease: '考慮しない',
       sigmaCk: 21, sigmaCa: 5.250, sigmaCta: 0.263, tauA: 0.360,

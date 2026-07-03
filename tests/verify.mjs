@@ -2,6 +2,7 @@
 //   node tests/verify.mjs
 import { compute } from '../js/calc/engine.js';
 import { presets } from '../js/model.js';
+import { trialWedge } from '../js/calc/earthPressure.js';
 
 let pass = 0, fail = 0;
 function eq(label, actual, expected, tol = 0.0015) {
@@ -191,6 +192,81 @@ console.log('◆ サンプル4: 水位有・落差0 (6366e656)');
   eqStr('case7 滑動NG', String(c[6].sliding.ok), 'false');
   const qmax = [30.459, 20.597, 22.129, 20.597, 38.214, 19.703, 29.884, 19.703, 39.650, 43.338];
   qmax.forEach((q, i) => eq(`case${i + 1} qmax`, c[i].bearing.qmax, q, 0.05));
+}
+
+// ---------------------------------------------------------------
+console.log('◆ 部材計算（自己整合チェック）');
+{
+  // サンプル入力では竪壁計算用 δm = 2/3×30 = 20度 = 安定計算用δ と一致するため、
+  // 部材計算の N・M は安定計算の V・M と一致し、縁応力度は地盤反力度 q1,q2 と一致する。
+  const inp = presets.noWaterDrop();
+  inp.member.calc = true;
+  const r = compute(inp);
+  const [c1] = r.cases;
+  const m = c1.member;
+  eq('m N = V', m.N, c1.sum.V, 0.0005);
+  eq('m M = M', m.M, c1.sum.M, 0.0005);
+  eq('m S = H', m.S, c1.sum.H, 0.0005);
+  eq('m σ1 = q1', m.s1, c1.reaction.q1, 0.001);
+  eq('m σ2 = q2', m.s2, c1.reaction.q2, 0.001);
+  eq('m A', m.A, 0.655, 1e-9);
+  eq('m Z', m.Z, 0.655 * 0.655 / 6, 1e-9);
+  eq('m τ', m.tau, c1.sum.H / 0.655 / 1000, 1e-6);
+  eq('m k', m.k, 1.0, 1e-9);
+  eqStr('m 判定', String(m.ok), 'true');
+
+  // 地震時ケースは割増係数 k=1.5
+  const inp2 = presets.waterDrop();
+  inp2.member.calc = true;
+  const r2 = compute(inp2);
+  const m10 = r2.cases[9].member;
+  eq('m10 k', m10.k, 1.5, 1e-9);
+  eq('m10 σca·k', m10.sigmaCa, 5.25 * 1.5, 1e-9);
+  // 揚圧力は部材計算に含まれない（浮力考慮ケースでも N は自重+土圧のみ）
+  const m2 = r2.cases[1].member;
+  eqStr('m2 揚圧力行なし', String(m2.rows.some((row) => row.name === '揚圧力')), 'false');
+  eqStr('m2 水圧行あり', String(m2.rows.some((row) => row.name === '水圧')), 'true');
+}
+
+// ---------------------------------------------------------------
+console.log('◆ 背面土の嵩上げ・勾配（理論解との照合）');
+{
+  // (1) 無限長斜面(嵩上げ大)・鉛直壁(α=0)・δ=β は Rankine の理論解と一致する
+  //     Ka = cosβ・(cosβ−√(cos²β−cos²φ))/(cosβ+√(cos²β−cos²φ)),  PA = 1/2・γ・H²・Ka
+  const phi = 30, beta = 10, gamma = 19, H = 1.0;
+  const cb = Math.cos(beta * Math.PI / 180);
+  const rt = Math.sqrt(cb * cb - Math.cos(phi * Math.PI / 180) ** 2);
+  const Ka = cb * (cb - rt) / (cb + rt);
+  const PAexp = 0.5 * gamma * H * H * Ka;
+  const r = trialWedge({
+    H, alpha: 0, L: 1, heelX: 0.5,
+    gammaWet: gamma, gammaSub: 0, waterLevel: 0,
+    phi, c: 0, delta: beta, kh: 0,
+    q: 0, x1: 0, x2: 0, precision: 0.001,
+    raise: 100, slopeN: 1 / Math.tan(beta * Math.PI / 180),
+  });
+  eq('無限斜面 PA = Rankine', r.PA, PAexp, PAexp * 0.005);
+
+  // (2) 嵩上げ高さに対する単調性: レベル < 嵩上げ0.3m < 無限斜面
+  const base = {
+    H: 0.58, alpha: 16.699, L: 1, heelX: 0.655,
+    gammaWet: 19, gammaSub: 0, waterLevel: 0,
+    phi: 30, c: 0, delta: 20, kh: 0,
+    q: 0, x1: 0, x2: 0, precision: 0.001, slopeN: 1.5,
+  };
+  const pa0 = trialWedge({ ...base, raise: 0 }).PA;
+  const pa03 = trialWedge({ ...base, raise: 0.3 }).PA;
+  const paInf = trialWedge({ ...base, raise: 50 }).PA;
+  eq('レベル時PA(既存一致)', pa0, 1.413, 0.002);
+  eqStr('嵩上げでPA増加', String(pa03 > pa0 && paInf > pa03), 'true');
+
+  // (3) raise=0 は従来のレベル計算と完全一致（engine経由）
+  const inp = presets.noWaterDrop();
+  inp.backfill.raise = 0.3;
+  inp.backfill.slopeN = 1.5;
+  const re = compute(inp);
+  eq('engine 嵩上げPA', re.cases[0].ep.PA, pa03, 0.001);
+  eq('β算出', re.backfill.beta, Math.atan(1 / 1.5) * 180 / Math.PI, 1e-9);
 }
 
 // ---------------------------------------------------------------

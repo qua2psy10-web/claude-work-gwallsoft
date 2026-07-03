@@ -43,20 +43,34 @@ export function sectionFig(geom) {
   return svg(W, H, g);
 }
 
-// 1.1.2 全体形状図（土砂天端・水位）
-export function overallFig(geom, { soilTop, wFront = 0, wBack = 0 }) {
+// 1.1.2 全体形状図（土砂天端・水位・嵩上げ盛土）
+export function overallFig(geom, { soilTop, wFront = 0, wBack = 0, raise = 0, slopeN = 0 }) {
   const W = 330, H = 205;
-  const s = 140 / geom.height;
+  const topY = Math.max(geom.height, soilTop + raise);
+  const s = 140 / topY;
   const ox = 95, oy = 175;
   const X = (x) => ox + x * s, Y = (y) => oy - y * s;
   const pts = [[0, 0], [0, geom.height], [geom.topWidth, geom.height], [geom.baseWidth, 0]];
   let g = P(pts.map(([x, y]) => [X(x), Y(y)]), 'wall');
-  // 前面地盤線・背面土砂面
+  // 前面地盤線・背面土砂面（嵩上げ時は勾配→レベルの折れ線）
   g += L(X(0) - 75, Y(0), X(0), Y(0), 'ground');
   const bx = geom.baseWidth - soilTop * (geom.baseWidth - geom.topWidth) / geom.height;
-  g += L(X(bx), Y(soilTop), X(bx) + 150, Y(soilTop), 'ground');
-  for (let i = 0; i < 9; i++) {
-    g += L(X(bx) + 14 + i * 15, Y(soilTop), X(bx) + 8 + i * 15, Y(soilTop) + 6, 'hatch');
+  const surf = [[X(bx), Y(soilTop)]];
+  if (raise > 0 && slopeN > 0) {
+    surf.push([X(bx + slopeN * raise), Y(soilTop + raise)]);
+    surf.push([X(bx) + 165, Y(soilTop + raise)]);
+  } else {
+    surf.push([X(bx) + 150, Y(soilTop)]);
+  }
+  g += PL(surf, 'ground');
+  const hy = surf[surf.length - 1][1];
+  for (let i = 0; i < 6; i++) {
+    const hx = surf[surf.length - 1][0] - 14 - i * 15;
+    if (hx > surf[surf.length - 2][0]) g += L(hx + 6, hy, hx, hy + 6, 'hatch');
+  }
+  if (raise > 0 && slopeN > 0) {
+    g += T((surf[0][0] + surf[1][0]) / 2 - 8, (surf[0][1] + surf[1][1]) / 2 - 6, `1:${slopeN}`, 'dtx', 'end');
+    g += dim(surf[1][0] + 14, Y(soilTop), surf[1][0] + 14, Y(soilTop + raise), mmv(raise));
   }
   // 水位（▽記号付き破線）
   const wl = (h, x1, x2, lx) => {
@@ -107,25 +121,35 @@ export function wedgeMethodFig(seismic) {
   return svg(W, H, g);
 }
 
-// ケース毎の土圧計算図（すべり角・水位・活荷重）
-export function caseEpFig(geom, epH, omega, { waterBack = 0, wFront = 0, surcharge = false }) {
+// ケース毎の土圧計算図（すべり角・水位・活荷重・嵩上げ盛土）
+export function caseEpFig(geom, epH, ep, { waterBack = 0, wFront = 0, surcharge = false, raise = 0, slopeN = 0 }) {
   const W = 320, H = 200;
-  const s = 130 / geom.height;
+  const omega = ep.omega;
+  const topY = Math.max(geom.height, epH + raise, ep.end ? ep.end[1] : 0);
+  const s = 130 / topY;
   const ox = 70, oy = 172;
   const X = (x) => ox + x * s, Y = (y) => oy - y * s;
   const pts = [[0, 0], [0, geom.height], [geom.topWidth, geom.height], [geom.baseWidth, 0]];
   let g = P(pts.map(([x, y]) => [X(x), Y(y)]), 'wall');
   const bx = geom.baseWidth - epH * (geom.baseWidth - geom.topWidth) / geom.height;
-  g += L(X(bx), Y(epH), 315, Y(epH), 'ground');
-  // すべり線
-  const run = epH / Math.tan(omega * Math.PI / 180);
-  g += L(X(geom.baseWidth), Y(0), X(geom.baseWidth + run), Y(epH), 'slip');
-  g += T(X(geom.baseWidth + run) + 6, Y(epH) + 16, `${omega.toFixed(1)}°`, 'dtx', 'start');
+  // 地表面（嵩上げ時は勾配→レベル）
+  let surfEndX = 315, surfEndY = Y(epH);
+  if (raise > 0 && slopeN > 0) {
+    g += PL([[X(bx), Y(epH)], [X(bx + slopeN * raise), Y(epH + raise)], [315, Y(epH + raise)]], 'ground');
+    surfEndY = Y(epH + raise);
+  } else {
+    g += L(X(bx), Y(epH), 315, Y(epH), 'ground');
+  }
+  // すべり線（くさび先端まで）
+  const end = ep.end || [geom.baseWidth + epH / Math.tan(omega * Math.PI / 180), epH];
+  g += L(X(geom.baseWidth), Y(0), X(end[0]), Y(end[1]), 'slip');
+  g += T(Math.min(X(end[0]) + 6, 285), Y(end[1]) + 16, `${omega.toFixed(1)}°`, 'dtx', 'start');
   // 活荷重
   if (surcharge) {
-    for (let x = X(bx) + 22; x <= 300; x += 16) g += L(x, Y(epH) - 14, x, Y(epH) - 3, 'arrow');
-    g += L(X(bx) + 18, Y(epH) - 14, 304, Y(epH) - 14, 'ln');
-    g += T(255, Y(epH) - 19, '活荷重', 'sym');
+    const lx0 = raise > 0 && slopeN > 0 ? Math.min(X(bx + slopeN * raise) + 8, 280) : X(bx) + 18;
+    for (let x = lx0 + 4; x <= 300; x += 16) g += L(x, surfEndY - 14, x, surfEndY - 3, 'arrow');
+    g += L(lx0, surfEndY - 14, 304, surfEndY - 14, 'ln');
+    g += T(Math.max(255, lx0 + 20), surfEndY - 19, '活荷重', 'sym');
   }
   // 水位
   if (waterBack > 0) {

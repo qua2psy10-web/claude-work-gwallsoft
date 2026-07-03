@@ -95,6 +95,7 @@
 
 .rpt-figwrap { text-align: center; margin: 1.5mm 0; }
 .rpt-fig { max-width: 100%; }
+.rpt-fig polyline { fill: none; }
 .rpt-fig .ln { stroke: #000; stroke-width: 1; }
 .rpt-fig .wall { fill: #f2f2f2; stroke: #000; stroke-width: 1.2; }
 .rpt-fig .wall2 { stroke: #000; stroke-width: 2; }
