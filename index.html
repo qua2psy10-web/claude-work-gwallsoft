@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>重力式擁壁設計計算</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/report.css">
+</head>
+<body>
+<div id="app">
+  <div id="panel">
+    <header>
+      <h1>重力式擁壁 設計計算</h1>
+      <div class="sub">道路土工擁壁工指針(平成24年7月) 準拠 ／ 試行くさび法・安定計算・計算書出力</div>
+    </header>
+    <div class="toolbar">
+      <select id="preset">
+        <option value="">― プリセット選択 ―</option>
+        <option value="noWaterDrop">水位無・落差0.27m（サンプル1）</option>
+        <option value="noWaterFlush">水位無・落差0m（サンプル2）</option>
+        <option value="waterDrop">水位有・地震時・落差0.27m（サンプル3）</option>
+        <option value="waterFlush">水位有・地震時・落差0m（サンプル4）</option>
+      </select>
+      <button id="btn-print" class="primary">印刷 / PDF保存</button>
+      <button id="btn-save">入力を保存(JSON)</button>
+      <button id="btn-load">読込</button>
+      <input type="file" id="file-load" accept=".json" style="display:none">
+    </div>
+
+    <fieldset>
+      <legend>標題</legend>
+      <div class="row"><input type="text" class="wide" data-path="title"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>断面形状（重力式定型擁壁・前面鉛直）</legend>
+      <div class="row"><label>天端幅</label><input type="number" step="0.001" data-path="geometry.topWidth"><span class="unit">m</span></div>
+      <div class="row"><label>壁高</label><input type="number" step="0.001" data-path="geometry.height"><span class="unit">m</span></div>
+      <div class="row"><label>底版幅</label><input type="number" step="0.001" data-path="geometry.baseWidth"><span class="unit">m</span></div>
+      <div class="row"><label>躯体の材質</label>
+        <select data-path="concrete.type">
+          <option value="plain">無筋コンクリート</option>
+          <option value="rc">鉄筋コンクリート</option>
+        </select>
+      </div>
+      <div class="row"><label>鉄筋コンクリート単位体積重量</label><input type="number" step="0.1" data-path="concrete.gammaRC"><span class="unit">kN/m³</span></div>
+      <div class="row"><label>無筋コンクリート単位体積重量</label><input type="number" step="0.1" data-path="concrete.gammaPlain"><span class="unit">kN/m³</span></div>
+      <div class="row"><label>躯体延長</label><input type="number" step="0.1" data-path="lengths.body"><span class="unit">m</span></div>
+      <div class="row"><label>底版延長</label><input type="number" step="0.1" data-path="lengths.base"><span class="unit">m</span></div>
+      <div class="row"><label>土圧作用延長</label><input type="number" step="0.1" data-path="lengths.ep"><span class="unit">m</span></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>全体形状</legend>
+      <div class="row"><label>擁壁天端からの落差高さ</label><input type="number" step="0.001" data-path="drop"><span class="unit">m</span></div>
+      <div class="row"><label>前載土砂高（常時）</label><input type="number" step="0.001" data-path="frontSoil.normal"><span class="unit">m</span></div>
+      <div class="row"><label>水位を考慮する</label><input type="checkbox" data-path="water.enabled"><span class="unit"></span></div>
+      <div class="grp" id="grp-water">
+        <div class="row"><label>前面水位（常時）</label><input type="number" step="0.001" data-path="water.normal.front"><span class="unit">m</span></div>
+        <div class="row"><label>背面水位（常時）</label><input type="number" step="0.001" data-path="water.normal.back"><span class="unit">m</span></div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>土砂条件</legend>
+      <div class="row"><label>湿潤単位体積重量 γ</label><input type="number" step="0.1" data-path="soil.gammaWet"><span class="unit">kN/m³</span></div>
+      <div class="row"><label>水中単位体積重量 γ'</label><input type="number" step="0.1" data-path="soil.gammaSub"><span class="unit">kN/m³</span></div>
+      <div class="row"><label>水の単位体積重量 γw</label><input type="number" step="0.1" data-path="soil.gammaW"><span class="unit">kN/m³</span></div>
+      <div class="row"><label>せん断抵抗角 φ</label><input type="number" step="0.1" data-path="soil.phi"><span class="unit">度</span></div>
+      <div class="row"><label>粘着力 c（常時）</label><input type="number" step="0.1" data-path="soil.c"><span class="unit">kN/m²</span></div>
+      <div class="row"><label>粘着力 cE（地震時）</label><input type="number" step="0.1" data-path="soil.cE"><span class="unit">kN/m²</span></div>
+      <div class="row"><label>壁面摩擦角 δ（常時）</label><input type="number" step="0.1" data-path="soil.delta"><span class="unit">度</span></div>
+      <div class="row"><label>壁面摩擦角 δE（地震時）</label><input type="number" step="0.1" data-path="soil.deltaE"><span class="unit">度</span></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>上載荷重（活荷重）</legend>
+      <div class="row"><label>活荷重を考慮する</label><input type="checkbox" data-path="surcharge.enabled"><span class="unit"></span></div>
+      <div class="grp" id="grp-surcharge">
+        <div class="row"><label>荷重強度 q</label><input type="number" step="0.1" data-path="surcharge.q"><span class="unit">kN/m²</span></div>
+        <div class="row"><label>載荷開始位置 X1</label><input type="number" step="0.001" data-path="surcharge.x1"><span class="unit">m</span></div>
+        <div class="row"><label>載荷終了位置 X2</label><input type="number" step="0.001" data-path="surcharge.x2"><span class="unit">m</span></div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>地震時</legend>
+      <div class="row"><label>地震時照査を行う</label><input type="checkbox" data-path="seismic.enabled"><span class="unit"></span></div>
+      <div class="grp" id="grp-seismic">
+        <div class="row"><label>設計水平震度 kh（躯体）</label><input type="number" step="0.01" data-path="seismic.khBody"><span class="unit"></span></div>
+        <div class="row"><label>設計水平震度 kh（裏込土）</label><input type="number" step="0.01" data-path="seismic.khSoil"><span class="unit"></span></div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>安定計算条件</legend>
+      <div class="row"><label>摩擦係数 μ</label><input type="number" step="0.01" data-path="stability.mu"><span class="unit">-</span></div>
+      <div class="row"><label>付着力 cB</label><input type="number" step="0.1" data-path="stability.cB"><span class="unit">kN/m²</span></div>
+      <div class="row"><label>許容偏心量 B/n の n（常時）</label><input type="number" step="0.1" data-path="stability.normal.n"><span class="unit">-</span></div>
+      <div class="row"><label>滑動安全率 Fs（常時）</label><input type="number" step="0.05" data-path="stability.normal.Fs"><span class="unit">-</span></div>
+      <div class="row"><label>許容支持力度 qa（常時）</label><input type="number" step="1" data-path="stability.normal.qa"><span class="unit">kN/m²</span></div>
+      <div class="row"><label>許容偏心量 B/n の n（地震時）</label><input type="number" step="0.1" data-path="stability.seismic.n"><span class="unit">-</span></div>
+      <div class="row"><label>滑動安全率 Fs（地震時）</label><input type="number" step="0.05" data-path="stability.seismic.Fs"><span class="unit">-</span></div>
+      <div class="row"><label>許容支持力度 qa（地震時）</label><input type="number" step="1" data-path="stability.seismic.qa"><span class="unit">kN/m²</span></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>部材計算条件（帳票表示）</legend>
+      <div class="row"><label>部材計算条件を出力する</label><input type="checkbox" data-path="member.show"><span class="unit"></span></div>
+      <div class="grp" id="grp-member">
+        <div class="row"><label>設計基準強度 σck</label><input type="number" step="1" data-path="member.sigmaCk"><span class="unit">N/mm²</span></div>
+        <div class="row"><label>許容曲げ圧縮応力度 σca</label><input type="number" step="0.001" data-path="member.sigmaCa"><span class="unit">N/mm²</span></div>
+        <div class="row"><label>許容曲げ引張応力度 σcta</label><input type="number" step="0.001" data-path="member.sigmaCta"><span class="unit">N/mm²</span></div>
+        <div class="row"><label>許容せん断応力度 τa</label><input type="number" step="0.001" data-path="member.tauA"><span class="unit">N/mm²</span></div>
+      </div>
+    </fieldset>
+  </div>
+
+  <div id="preview">
+    <div class="status" id="status"></div>
+    <div id="report-area"></div>
+  </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
