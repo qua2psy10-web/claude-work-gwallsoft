@@ -77,7 +77,12 @@ export function buildBlocks(r) {
       items.push(['水位の扱い', inp.water.handling]);
       items.push(['浮力の算定位置', inp.water.upliftPosition]);
     }
-    items.push(['背面土砂形状', inp.backfillShape]);
+    const raised = r.backfill.raise > 0;
+    items.push(['背面土砂形状', raised ? '盛土（嵩上げ）' : 'レベル']);
+    if (raised) {
+      items.push(['嵩上げ高さ', `${fmt3(r.backfill.raise)} ${UNIT.m}`]);
+      items.push(['法面勾配', `1:${fmt2(r.backfill.slopeN)}　（法面傾斜角 β = ${fmt3(r.backfill.beta)} 度）`]);
+    }
     items.push(['擁壁天端からの落差高さ', `${fmt3(inp.drop)} ${UNIT.m}`]);
     b.add(bullets(items));
   }
@@ -91,6 +96,7 @@ export function buildBlocks(r) {
     b.add(bullets(items));
     b.add(`<div class="rpt-figwrap">${overallFig(geom, {
       soilTop: r.epHeight, wFront: water ? inp.water.normal.front : 0, wBack: water ? inp.water.normal.back : 0,
+      raise: r.backfill.raise, slopeN: r.backfill.slopeN,
     })}</div>`);
   }
   if (seismic) {
@@ -103,6 +109,7 @@ export function buildBlocks(r) {
     b.add(bullets(items));
     b.add(`<div class="rpt-figwrap">${overallFig(geom, {
       soilTop: r.epHeight, wFront: water ? inp.water.seismic.front : 0, wBack: water ? inp.water.seismic.back : 0,
+      raise: r.backfill.raise, slopeN: r.backfill.slopeN,
     })}</div>`);
   }
 
@@ -412,10 +419,11 @@ export function buildBlocks(r) {
     b.add(para(`(${i + 1})${esc(c.name)}`, 'case-head'), { keepNext: true });
     const cd = r.cases[i];
     const useWater = cd.buoyancy > 0 && inp.water.normal.back > 0;
-    b.add(`<div class="rpt-figwrap">${caseEpFig(geom, r.epHeight, cd.ep.omega, {
+    b.add(`<div class="rpt-figwrap">${caseEpFig(geom, r.epHeight, cd.ep, {
       waterBack: useWater ? inp.water.normal.back : 0,
       wFront: cd.buoyancy > 0 ? inp.water.normal.front : 0,
       surcharge: cd.surcharge,
+      raise: r.backfill.raise, slopeN: r.backfill.slopeN,
     })}</div>`);
     b.add(subTitle('土圧に関する設定値'));
     {
@@ -438,6 +446,9 @@ export function buildBlocks(r) {
         rows.push(['常時の壁面摩擦角', 'δ', '度', fmt3(inp.soil.delta), '']);
       }
       rows.push(['壁背面と鉛直面のなす角', 'α', '度', fmt3(r.alpha), '']);
+      if (r.backfill.raise > 0) {
+        rows.push(['法面傾斜角', 'β', '度', fmt3(r.backfill.beta), `嵩上げ${fmt3(r.backfill.raise)}m 勾配1:${fmt2(r.backfill.slopeN)}`]);
+      }
       if (cd.surcharge) rows.push(['上載荷重', 'q', 'kN/m2', fmt3(inp.surcharge.q), '']);
       if (cd.inertia) rows.push(['設計水平震度', 'kh', '', fmt3(cd.epKind === 'seismic' ? inp.seismic.khSoil : 0), '']);
       b.add(kvTable(rows));

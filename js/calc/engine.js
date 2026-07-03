@@ -48,6 +48,8 @@ export function compute(input) {
       x1: input.surcharge.x1,
       x2: input.surcharge.x2,
       precision: input.epCondition.precision,
+      raise: input.backfill?.raise || 0,
+      slopeN: input.backfill?.slopeN || 0,
     });
 
     // 作用力の集計行
@@ -101,6 +103,8 @@ export function compute(input) {
         x1: input.surcharge.x1,
         x2: input.surcharge.x2,
         precision: input.epCondition.precision,
+        raise: input.backfill?.raise || 0,
+        slopeN: input.backfill?.slopeN || 0,
       });
       const mRows = [{ name: '躯体自重', V: self.V, Vx: self.VXG, H: 0, Hy: 0 }];
       if (cd.inertia && inertia) {
@@ -125,8 +129,13 @@ export function compute(input) {
     return { ...cd, ep, epm, rows, sum, reaction, overturn, sliding, bearing, member };
   });
 
+  const raise = input.backfill?.raise || 0;
+  const slopeN = input.backfill?.slopeN || 0;
+  const beta = raise > 0 && slopeN > 0 ? Math.atan(1 / slopeN) * 180 / Math.PI : 0;
+
   return {
     input, alpha, epHeight, gammaConcrete,
+    backfill: { raise, slopeN, beta },
     self, inertia, uplift: up, wpBack, wpFront,
     cases,
   };
