@@ -28,7 +28,7 @@ function syncForm() {
   $('#grp-water').classList.toggle('disabled', !model.water.enabled);
   $('#grp-surcharge').classList.toggle('disabled', !model.surcharge.enabled);
   $('#grp-seismic').classList.toggle('disabled', !model.seismic.enabled);
-  $('#grp-member').classList.toggle('disabled', !model.member.show);
+  $('#grp-member').classList.toggle('disabled', !model.member.show && !model.member.calc);
 }
 
 // フォーム → モデル
@@ -70,7 +70,7 @@ function update() {
   try {
     const result = compute(model);
     const { pageCount } = renderReport(result, $('#report-area'));
-    const ngCases = result.cases.filter((c) => !c.overturn.ok || !c.sliding.ok || !c.bearing.ok);
+    const ngCases = result.cases.filter((c) => !c.overturn.ok || !c.sliding.ok || !c.bearing.ok || (c.member && !c.member.ok));
     const ngText = ngCases.length
       ? `　<span class="ngmark">判定NG: ケース ${ngCases.map((c) => c.no).join(', ')}</span>`
       : '　全ケース判定OK';

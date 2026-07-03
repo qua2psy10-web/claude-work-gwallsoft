@@ -194,5 +194,39 @@ console.log('◆ サンプル4: 水位有・落差0 (6366e656)');
 }
 
 // ---------------------------------------------------------------
+console.log('◆ 部材計算（自己整合チェック）');
+{
+  // サンプル入力では竪壁計算用 δm = 2/3×30 = 20度 = 安定計算用δ と一致するため、
+  // 部材計算の N・M は安定計算の V・M と一致し、縁応力度は地盤反力度 q1,q2 と一致する。
+  const inp = presets.noWaterDrop();
+  inp.member.calc = true;
+  const r = compute(inp);
+  const [c1] = r.cases;
+  const m = c1.member;
+  eq('m N = V', m.N, c1.sum.V, 0.0005);
+  eq('m M = M', m.M, c1.sum.M, 0.0005);
+  eq('m S = H', m.S, c1.sum.H, 0.0005);
+  eq('m σ1 = q1', m.s1, c1.reaction.q1, 0.001);
+  eq('m σ2 = q2', m.s2, c1.reaction.q2, 0.001);
+  eq('m A', m.A, 0.655, 1e-9);
+  eq('m Z', m.Z, 0.655 * 0.655 / 6, 1e-9);
+  eq('m τ', m.tau, c1.sum.H / 0.655 / 1000, 1e-6);
+  eq('m k', m.k, 1.0, 1e-9);
+  eqStr('m 判定', String(m.ok), 'true');
+
+  // 地震時ケースは割増係数 k=1.5
+  const inp2 = presets.waterDrop();
+  inp2.member.calc = true;
+  const r2 = compute(inp2);
+  const m10 = r2.cases[9].member;
+  eq('m10 k', m10.k, 1.5, 1e-9);
+  eq('m10 σca·k', m10.sigmaCa, 5.25 * 1.5, 1e-9);
+  // 揚圧力は部材計算に含まれない（浮力考慮ケースでも N は自重+土圧のみ）
+  const m2 = r2.cases[1].member;
+  eqStr('m2 揚圧力行なし', String(m2.rows.some((row) => row.name === '揚圧力')), 'false');
+  eqStr('m2 水圧行あり', String(m2.rows.some((row) => row.name === '水圧')), 'true');
+}
+
+// ---------------------------------------------------------------
 console.log(`\n結果: ${pass} 件一致 / ${fail} 件不一致`);
 process.exit(fail === 0 ? 0 : 1);

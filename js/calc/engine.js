@@ -3,6 +3,7 @@ import { backFaceAngle } from './geometry.js';
 import { trialWedge } from './earthPressure.js';
 import { selfWeight, bodyInertia, uplift, waterPressure, aggregate, groundReaction } from './forces.js';
 import { checkOverturn, checkSliding, checkBearing } from './stability.js';
+import { memberCheck } from './member.js';
 import { generateCases } from '../model.js';
 
 export function compute(input) {
@@ -77,7 +78,51 @@ export function compute(input) {
     const sliding = checkSliding(sum.V, sum.H, sum.e, B, Lbase, input.stability.mu, input.stability.cB, cd.cond.Fs);
     const bearing = checkBearing(reaction.q1, reaction.q2, cd.cond.qa);
 
-    return { ...cd, ep, rows, sum, reaction, overturn, sliding, bearing };
+    // 部材計算（竪壁付け根の応力度照査）
+    // 竪壁計算用の壁面摩擦角は計算値 δm = 2/3・φ として土圧を別途算定する。
+    // 揚圧力は照査断面（底版上面）より下に作用するため含めない。
+    let member = null;
+    let epm = null;
+    if (input.member.calc) {
+      const deltaM = (2 / 3) * input.soil.phi;
+      epm = trialWedge({
+        H: epHeight,
+        alpha,
+        L: input.lengths.ep,
+        heelX: B,
+        gammaWet: input.soil.gammaWet,
+        gammaSub: input.soil.gammaSub,
+        waterLevel: useWater ? input.water.normal.back : 0,
+        phi: input.soil.phi,
+        c: seismicEp ? input.soil.cE : input.soil.c,
+        delta: deltaM,
+        kh: seismicEp ? input.seismic.khSoil : 0,
+        q: cd.surcharge ? input.surcharge.q : 0,
+        x1: input.surcharge.x1,
+        x2: input.surcharge.x2,
+        precision: input.epCondition.precision,
+      });
+      const mRows = [{ name: '躯体自重', V: self.V, Vx: self.VXG, H: 0, Hy: 0 }];
+      if (cd.inertia && inertia) {
+        mRows.push({ name: '躯体慣性力', V: 0, Vx: 0, H: inertia.H, Hy: inertia.HYG });
+      }
+      mRows.push({ name: '土圧', V: epm.PAV, Vx: epm.MV, H: epm.PAH, Hy: epm.MH });
+      if (cd.buoyancy > 0) {
+        let PW = 0, PWY = 0;
+        if ((cd.buoyancy === 2 || cd.buoyancy === 3) && wpBack) { PW += wpBack.PW; PWY += wpBack.PWYG; }
+        if ((cd.buoyancy === 1 || cd.buoyancy === 3) && wpFront) { PW += wpFront.PW; PWY += wpFront.PWYG; }
+        mRows.push({ name: '水圧', V: 0, Vx: 0, H: PW, Hy: PWY });
+      }
+      member = memberCheck({
+        rows: mRows,
+        b: B,
+        L: input.lengths.body,
+        member: input.member,
+        k: cd.inertia ? input.member.kSeismic : input.member.kNormal,
+      });
+    }
+
+    return { ...cd, ep, epm, rows, sum, reaction, overturn, sliding, bearing, member };
   });
 
   return {

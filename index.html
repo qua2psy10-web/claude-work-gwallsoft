@@ -106,9 +106,12 @@
     </fieldset>
 
     <fieldset>
-      <legend>部材計算条件（帳票表示）</legend>
-      <div class="row"><label>部材計算条件を出力する</label><input type="checkbox" data-path="member.show"><span class="unit"></span></div>
+      <legend>部材計算</legend>
+      <div class="row"><label>部材計算条件を帳票に出力する</label><input type="checkbox" data-path="member.show"><span class="unit"></span></div>
+      <div class="row"><label>応力度照査を行う（第5章出力）</label><input type="checkbox" data-path="member.calc"><span class="unit"></span></div>
       <div class="grp" id="grp-member">
+        <div class="row"><label>割増係数（常時）</label><input type="number" step="0.05" data-path="member.kNormal"><span class="unit">-</span></div>
+        <div class="row"><label>割増係数（地震時）</label><input type="number" step="0.05" data-path="member.kSeismic"><span class="unit">-</span></div>
         <div class="row"><label>設計基準強度 σck</label><input type="number" step="1" data-path="member.sigmaCk"><span class="unit">N/mm²</span></div>
         <div class="row"><label>許容曲げ圧縮応力度 σca</label><input type="number" step="0.001" data-path="member.sigmaCa"><span class="unit">N/mm²</span></div>
         <div class="row"><label>許容曲げ引張応力度 σcta</label><input type="number" step="0.001" data-path="member.sigmaCta"><span class="unit">N/mm²</span></div>

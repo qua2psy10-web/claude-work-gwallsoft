@@ -125,7 +125,7 @@ export function buildBlocks(r) {
   b.sub('背面土砂');
   {
     const items = [];
-    if (inp.member.show) items.push(['壁面摩擦角：竪壁計算用', '計算値']);
+    if (inp.member.show || inp.member.calc) items.push(['壁面摩擦角：竪壁計算用', '計算値']);
     items.push(['壁背面と鉛直面のなす角 α', '計算値']);
     b.add(bullets(items));
     const rows = [
@@ -177,7 +177,7 @@ export function buildBlocks(r) {
   b.sub('支持力照査の諸条件');
   b.add(bullets([['許容支持力度', inp.stability.bearingMethod]]));
 
-  if (inp.member.show) {
+  if (inp.member.show || inp.member.calc) {
     b.sec('部材計算条件');
     b.sub('部材共通条件');
     b.add(bullets([
@@ -205,6 +205,7 @@ export function buildBlocks(r) {
     const rows = [];
     rows.push(['ケース名', ...cs.map((c) => esc(c.name))]);
     rows.push(['安定計算', ...cs.map(() => '○')]);
+    rows.push(['部材計算', ...cs.map(() => (inp.member.calc ? '○' : '-'))]);
     rows.push(['作用条件　地震時設定', ...cs.map((c) => (c.inertia ? 'LV2地震' : '無し'))]);
     if (water) {
       rows.push(['　　　　　揚圧力', ...cs.map((c) => (c.buoyancy > 0 ? '考慮' : '無視'))]);
@@ -218,9 +219,9 @@ export function buildBlocks(r) {
     rows.push(['許容偏心量 B/n の n', ...cs.map((c) => fmt2(c.cond.n))]);
     rows.push(['安定照査条件　滑動安全率', ...cs.map((c) => fmt2(c.cond.Fs))]);
     rows.push(['　　　　　　　許容支持力度', ...cs.map((c) => fmt2(c.cond.qa))]);
-    if (inp.member.show) {
-      rows.push(['部材照査条件　許容応力度', ...cs.map(() => '-')]);
-      rows.push(['許容応力度の割増係数', ...cs.map(() => '-')]);
+    if (inp.member.show || inp.member.calc) {
+      rows.push(['部材照査条件　許容応力度', ...cs.map(() => (inp.member.calc ? '基準値' : '-'))]);
+      rows.push(['許容応力度の割増係数', ...cs.map((c) => (inp.member.calc ? fmt2(c.inertia ? inp.member.kSeismic : inp.member.kNormal) : '-'))]);
     }
     b.add(table(header, rows, 'combo'));
   }
@@ -260,6 +261,22 @@ export function buildBlocks(r) {
       `qmax=${fmt3(c.bearing.qmax)} ${c.bearing.ok ? '≦' : '＞'}qa=${fmt3(c.bearing.qa)}<br><span class="${c.bearing.ok ? 'ok' : 'ng'}">${c.bearing.ok ? 'OK' : 'NG'}</span>`]),
     'result',
   ));
+  if (inp.member.calc) {
+    b.sec('部材計算結果');
+    b.sub('竪壁付け根の応力度照査');
+    b.add(table(
+      [['No', '荷重ケース名', '曲げ圧縮<br>σc (N/mm2)', '曲げ引張<br>σt (N/mm2)', 'せん断<br>τ (N/mm2)', '判定']],
+      r.cases.map((c) => {
+        const m = c.member;
+        return [String(c.no), { t: esc(c.name), cls: 'lt' },
+          `${m.sigmaC.toFixed(4)} ≦ ${fmt3(m.sigmaCa)}`,
+          `${m.sigmaT.toFixed(4)} ≦ ${fmt3(m.sigmaCta)}`,
+          `${m.tau.toFixed(4)} ≦ ${fmt3(m.tauA)}`,
+          `<span class="${m.ok ? 'ok' : 'ng'}">${m.ok ? 'OK' : 'NG'}</span>`];
+      }),
+      'result',
+    ));
+  }
 
   // ---------------- 第3章 作用力の算定 ----------------
   b.chapter('作用力の算定');
@@ -652,6 +669,59 @@ export function buildBlocks(r) {
     ));
     b.add(judge(`　　 qmax ＝ ${fmt3(c.bearing.qmax)} (kN/m2)　${c.bearing.ok ? '≦' : '＞'}　qa = ${fmt3(c.bearing.qa)} (kN/m2)`, c.bearing.ok));
   });
+
+  // ---------------- 第5章 部材計算 ----------------
+  if (inp.member.calc) {
+    b.chapter('部材計算');
+    b.sec('部材計算の照査方法');
+    b.add(para('　　竪壁付け根（底版上面）の断面について、断面より上の作用力から軸力(N)・せん断力(S)・<br>　　断面図心回りのモーメント(M)を求め、無筋コンクリートの縁応力度・せん断応力度を照査します。<br>　　竪壁計算用の壁面摩擦角は計算値（δm = 2/3・φ）を用いた土圧により算定します。<br>　　揚圧力は照査断面より下に作用するため考慮しません。'));
+    b.add(formula(
+      '<div>A ＝ b・L　　　　Z ＝ L・b<sup>2</sup>/6</div>' +
+      `<div>e ＝ ${frac('b', '2')} − ${frac('ΣV・x − ΣH・y', 'N')}　　　　M ＝ N・e</div>` +
+      `<div>σ1,σ2 ＝ ${frac('N', 'A')} ± ${frac('M', 'Z')}</div>` +
+      `<div>τ ＝ ${frac('S', 'A')}</div>`,
+    ));
+    b.add(legend([
+      ['b', '照査断面の幅 (m)'], ['L', '躯体延長 (m)'],
+      ['A', '断面積 (m2)'], ['Z', '断面係数 (m3)'],
+      ['N', '軸力（断面より上の鉛直力合計） (kN)'], ['S', 'せん断力（断面より上の水平力合計） (kN)'],
+      ['e', '軸力の偏心量（断面図心からの距離） (m)'], ['M', '断面図心回りのモーメント (kN・m)'],
+      ['σ1,σ2', '前面側・背面側の縁応力度 (kN/m2)'], ['τ', 'せん断応力度 (kN/m2)'],
+      ['k', '許容応力度の割増係数（常時1.00／地震時1.50）'],
+    ]));
+    b.add(para('　　照査: σc ≦ σca・k、σt ≦ σcta・k、τ ≦ τa・k　（σc:曲げ圧縮、σt:曲げ引張、応力度はN/mm2換算）'));
+
+    r.cases.forEach((c) => {
+      const m = c.member;
+      b.sec(`ケースNo.${c.no} ${esc(c.name)}`, { breakBefore: true });
+      b.add(para('(1)断面諸元'), { keepNext: true });
+      b.add(kvTable([
+        ['照査断面の幅', 'b', 'm', fmt3(m.b), '竪壁付け根'],
+        ['躯体延長', 'L', 'm', fmt3(m.L), ''],
+        ['断面積', 'A', 'm2', fmt3(m.A), ''],
+        ['断面係数', 'Z', 'm3', fmt3(m.Z), ''],
+        ['割増係数', 'k', '-', fmt2(m.k), ''],
+      ]));
+      b.add(para('(2)作用力（竪壁計算用土圧 δm = 2/3・φ）'), { keepNext: true });
+      {
+        const rows = m.rows.map((row) => [row.name, fmt3(row.V), fmt3(row.Vx), fmt3(row.H), fmt3(row.Hy)]);
+        rows.push(['合計', fmt3(m.N), fmt3(m.Vx), fmt3(m.S), fmt3(m.Hy)]);
+        b.add(table([['種類', 'V<br>(kN)', 'V･x<br>(kN・m)', 'H<br>(kN)', 'H･y<br>(kN・m)']], rows));
+      }
+      b.add(table(
+        [['N<br>(kN)', 'S<br>(kN)', 'e<br>(m)', 'M<br>(kN・m)']],
+        [[fmt3(m.N), fmt3(m.S), fmt3(m.e), fmt3(m.M)]],
+      ));
+      b.add(para('(3)応力度照査'), { keepNext: true });
+      b.add(table(
+        [['σ1<br>(kN/m2)', 'σ2<br>(kN/m2)', 'σc<br>(N/mm2)', 'σt<br>(N/mm2)', 'τ<br>(N/mm2)']],
+        [[fmt3(m.s1), fmt3(m.s2), m.sigmaC.toFixed(4), m.sigmaT.toFixed(4), m.tau.toFixed(4)]],
+      ));
+      b.add(judge(`　　 σc ＝ ${m.sigmaC.toFixed(4)} (N/mm2)　${m.okC ? '≦' : '＞'}　σca・k = ${fmt3(m.sigmaCa)} (N/mm2)`, m.okC));
+      b.add(judge(`　　 σt ＝ ${m.sigmaT.toFixed(4)} (N/mm2)　${m.okT ? '≦' : '＞'}　σcta・k = ${fmt3(m.sigmaCta)} (N/mm2)`, m.okT));
+      b.add(judge(`　　 τ　＝ ${m.tau.toFixed(4)} (N/mm2)　${m.okTau ? '≦' : '＞'}　τa・k = ${fmt3(m.tauA)} (N/mm2)`, m.okTau));
+    });
+  }
 
   return b.blocks;
 }

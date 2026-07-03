@@ -67,6 +67,9 @@ export function defaultInput() {
     },
     member: {
       show: true,                 // 部材計算条件を帳票に出力
+      calc: false,                // 応力度照査を行う（第5章 部材計算を出力）
+      kNormal: 1.00,              // 許容応力度の割増係数（常時）
+      kSeismic: 1.50,             // 許容応力度の割増係数（地震時）
       calcRebar: '算出しない',
       shearIncrease: '考慮しない',
       sigmaCk: 21, sigmaCa: 5.250, sigmaCta: 0.263, tauA: 0.360,
