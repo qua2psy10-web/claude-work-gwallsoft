@@ -415,9 +415,26 @@ export function buildBlocks(r) {
   }
 
   b.sub('土圧の計算');
-  r.cases.forEach((c, i) => {
-    b.add(para(`(${i + 1})${esc(c.name)}`, 'case-head'), { keepNext: true });
-    const cd = r.cases[i];
+  // 土圧は（常時/地震時・水位考慮の有無・活荷重の有無・慣性力の有無）で決まるため、
+  // 同一条件のケースはまとめて1回だけ出力する。
+  const epGroups = [];
+  for (const cd of r.cases) {
+    const key = `${cd.epKind}|${cd.buoyancy > 0 ? 1 : 0}|${cd.surcharge ? 1 : 0}|${cd.inertia ? 1 : 0}`;
+    const g = epGroups.find((x) => x.key === key);
+    if (g) g.cases.push(cd); else epGroups.push({ key, cases: [cd] });
+  }
+  const epCondName = (cd) => {
+    const parts = [cd.inertia ? '地震時' : '常時'];
+    if (cd.surcharge) parts.push('活荷重全面載荷');
+    if (cd.inertia) parts.push(cd.epKind === 'seismic' ? '地震時土圧' : '常時土圧');
+    if (cd.buoyancy >= 0) parts.push(cd.buoyancy > 0 ? '浮力考慮' : '浮力無視');
+    return parts.join(' ');
+  };
+  epGroups.forEach((g, i) => {
+    const cd = g.cases[0];
+    const nos = g.cases.map((x) => `No.${x.no}`).join(', ');
+    const label = `${epCondName(cd)}　（ケース${nos}${g.cases.length > 1 ? ' 共通' : ''}）`;
+    b.add(para(`(${i + 1})${label}`, 'case-head'), { keepNext: true });
     const useWater = cd.buoyancy > 0 && inp.water.normal.back > 0;
     b.add(`<div class="rpt-figwrap">${caseEpFig(geom, r.epHeight, cd.ep, {
       waterBack: useWater ? inp.water.normal.back : 0,
