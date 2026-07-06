@@ -815,7 +815,7 @@ export function renderReport(result, mount) {
   const mkPage = (bodyHtml, pageNo) => {
     const pg = document.createElement('div');
     pg.className = 'rpt-page';
-    pg.innerHTML = `<div class="rpt-pghead">${pageNo == null ? '' : pageNo}</div><div class="rpt-pgbody">${bodyHtml}</div>`;
+    pg.innerHTML = `<div class="rpt-pgbody">${bodyHtml}</div><div class="rpt-pgfoot">${pageNo == null ? '' : pageNo}</div>`;
     return pg;
   };
   tocPages.forEach((html) => mount.appendChild(mkPage(html, null)));
