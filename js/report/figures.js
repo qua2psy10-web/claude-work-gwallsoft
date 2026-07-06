@@ -260,7 +260,8 @@ export function reactionFig(rc, sum) {
   g += T(x1 + 6, yb + d2 + 4, `q2 = ${fmt3(rc.q2)}(kN/m2)`, 'dtx', 'start');
   // V と偏心量 e
   const xc = (x0 + x1) / 2;
-  const xe = xc + (x1 - x0) * (sum.e / rc.B);
+  // e>0 は合力が底版中心より前面側(x0側)にあることを示す
+  const xe = xc - (x1 - x0) * (sum.e / rc.B);
   g += L(xe, yb - 38, xe, yb - 4, 'arrowV');
   g += T(xe + 5, yb - 42, `V = ${fmt3(sum.V)}(kN)`, 'dtx', 'start');
   g += L(xc, yb - 26, xc, yb + 2, 'ext');
