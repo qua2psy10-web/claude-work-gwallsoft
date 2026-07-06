@@ -10,17 +10,27 @@ const T = (x, y, text, cls = 'tx', anchor = 'middle') =>
 const P = (pts, cls = 'poly') => `<polygon points="${pts.map((p) => p.join(',')).join(' ')}" class="${cls}"/>`;
 const PL = (pts, cls = 'pline') => `<polyline points="${pts.map((p) => p.join(',')).join(' ')}" class="${cls}"/>`;
 
-// 寸法線（両端ティック付き）
+// 寸法線（両端ティック付き）。ラベルは線に重ならないよう、
+// 横線では基線を上下に逃がし、縦線では左右に寄せてアンカーを切り替える。
 function dim(x1, y1, x2, y2, label, offTx = -3) {
   const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
   const dx = x2 - x1, dy = y2 - y1;
   const len = Math.hypot(dx, dy) || 1;
   const nx = -dy / len, ny = dx / len;
+  let tx = mx, ty = my, anchor = 'middle';
+  if (Math.abs(ny) >= Math.abs(nx)) {
+    ty = my + ny * offTx + (ny * offTx > 0 ? 8 : -2);
+  } else {
+    const side = Math.sign(nx * offTx) || -1;
+    anchor = side < 0 ? 'end' : 'start';
+    tx = mx + side * 5;
+    ty = my + 3;
+  }
   return (
     L(x1, y1, x2, y2, 'dim') +
     L(x1 - nx * 3, y1 - ny * 3, x1 + nx * 3, y1 + ny * 3, 'dim') +
     L(x2 - nx * 3, y2 - ny * 3, x2 + nx * 3, y2 + ny * 3, 'dim') +
-    T(mx + nx * offTx, my + ny * offTx - 2, label, 'dtx')
+    T(tx, ty, label, 'dtx', anchor)
   );
 }
 
@@ -191,7 +201,7 @@ export function omegaPaGraph(curve, xmin) {
 
 // 揚圧力図（台形分布）
 export function upliftFig(up) {
-  const W = 320, H = 150;
+  const W = 400, H = 150;
   const x0 = 80, x1 = 250, yb = 55;
   const maxU = Math.max(Math.abs(up.uP1), Math.abs(up.uP2), 1e-6);
   const d1 = 60 * Math.abs(up.uP1) / maxU, d2 = 60 * Math.abs(up.uP2) / maxU;
@@ -202,8 +212,8 @@ export function upliftFig(up) {
     const d = d1 + (d2 - d1) * i / 4;
     g += L(x, yb + d, x, yb + 3, 'arrow');
   }
-  g += T(x0 - 5, yb + d1 + 14, `up1 = ${fmt3(up.uP1)}(kN/m2)`, 'dtx', 'start');
-  g += T(x1 + 5, yb + d2 + 14, `up2 = ${fmt3(up.uP2)}(kN/m2)`, 'dtx', 'end');
+  g += T(x0 - 5, yb + Math.max(d1, d2) + 14, `up1 = ${fmt3(up.uP1)}(kN/m2)`, 'dtx', 'start');
+  g += T(x1 + 6, yb + d2 + 4, `up2 = ${fmt3(up.uP2)}(kN/m2)`, 'dtx', 'start');
   g += dim(x0, yb - 12, x1, yb - 12, fmt3(up.B));
   return svg(W, H, g);
 }
@@ -221,7 +231,7 @@ export function waterFig(wp, side) {
   g += L(xw + dir * (d + 14), ys, xw + dir * (d + 14), yb, 'ext');
   g += T(xw + dir * 40, ys - 6, '0.000', 'dtx');
   g += T(xw + dir * 40, yb + 14, fmt3(Math.abs(wp.pw)), 'dtx');
-  g += dim(xw - dir * 16, ys, xw - dir * 16, yb, mmv(wp.H));
+  g += dim(xw - dir * 16, ys, xw - dir * 16, yb, mmv(wp.H), dir * 3); // ラベルは壁と反対側へ
   for (let i = 1; i <= 3; i++) {
     const y = ys + (yb - ys) * i / 4;
     const dd = d * i / 4;
@@ -232,7 +242,7 @@ export function waterFig(wp, side) {
 
 // 地盤反力度図
 export function reactionFig(rc, sum) {
-  const W = 340, H = 190;
+  const W = 390, H = 190;
   const x0 = 80, x1 = 260, yb = 70;
   const qm = Math.max(rc.q1, rc.q2, 1e-6);
   const d1 = 55 * rc.q1 / qm, d2 = 55 * rc.q2 / qm;
@@ -246,15 +256,15 @@ export function reactionFig(rc, sum) {
     const xs = x1 - (x1 - x0) * (rc.Bp / rc.B);
     g += P([[xs, yb], [x1, yb], [x1, yb + d2]], 'press');
   }
-  g += T(x0 - 5, yb + Math.max(d1, 12) + 14, `q1 = ${fmt3(rc.q1)}(kN/m2)`, 'dtx', 'start');
-  g += T(x1 + 5, yb + Math.max(d2, 12) + 14, `q2 = ${fmt3(rc.q2)}(kN/m2)`, 'dtx', 'end');
+  g += T(x0 - 5, yb + Math.max(d1, d2, 12) + 14, `q1 = ${fmt3(rc.q1)}(kN/m2)`, 'dtx', 'start');
+  g += T(x1 + 6, yb + d2 + 4, `q2 = ${fmt3(rc.q2)}(kN/m2)`, 'dtx', 'start');
   // V と偏心量 e
   const xc = (x0 + x1) / 2;
   const xe = xc + (x1 - x0) * (sum.e / rc.B);
   g += L(xe, yb - 38, xe, yb - 4, 'arrowV');
   g += T(xe + 5, yb - 42, `V = ${fmt3(sum.V)}(kN)`, 'dtx', 'start');
   g += L(xc, yb - 26, xc, yb + 2, 'ext');
-  g += T((xc + xe) / 2, yb - 28, fmt3(sum.e), 'dtx');
+  g += T(Math.min(xc, xe) - 6, yb - 28, fmt3(sum.e), 'dtx', 'end');
   g += dim(x0, yb - 14, xc, yb - 14, fmt3(rc.B / 2));
   g += dim(xc, yb - 14, x1, yb - 14, fmt3(rc.B / 2));
   g += dim(x0, yb + 72, x1, yb + 72, fmt3(rc.B), 5);
