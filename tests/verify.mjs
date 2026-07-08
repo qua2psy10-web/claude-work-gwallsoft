@@ -33,9 +33,15 @@ console.log('◆ 共通: 躯体自重（座標法）');
 // ---------------------------------------------------------------
 console.log('◆ サンプル1: 水位無・落差0.27 (9134390e)');
 {
+  // チェックなし側の変種は生成されないため、活荷重の有無それぞれで計算して照合する
+  const inpN = presets.noWaterDrop();
+  inpN.surcharge.enabled = false;
+  const rN = compute(inpN);
   const r = compute(presets.noWaterDrop());
-  eqStr('ケース数', String(r.cases.length), '2');
-  const [c1, c2] = r.cases;
+  eqStr('ケース数(活荷重なし)', String(rN.cases.length), '1');
+  eqStr('ケース数(活荷重あり)', String(r.cases.length), '1');
+  const c1 = rN.cases[0];
+  const c2 = r.cases[0];
 
   eq('土圧作用高', r.epHeight, 0.580, 1e-9);
   // ケース1 常時
@@ -82,8 +88,11 @@ console.log('◆ サンプル1: 水位無・落差0.27 (9134390e)');
 // ---------------------------------------------------------------
 console.log('◆ サンプル2: 水位無・落差0 (cd7bad4d)');
 {
+  const inpN = presets.noWaterFlush();
+  inpN.surcharge.enabled = false;
+  const c1 = compute(inpN).cases[0];
   const r = compute(presets.noWaterFlush());
-  const [c1, c2] = r.cases;
+  const c2 = r.cases[0];
   eq('土圧作用高', r.epHeight, 0.850, 1e-9);
   eq('c1 V', c1.sum.V, 12.127, 0.002);
   eq('c1 H', c1.sum.H, 2.434, 0.002);
@@ -102,9 +111,16 @@ console.log('◆ サンプル2: 水位無・落差0 (cd7bad4d)');
 // ---------------------------------------------------------------
 console.log('◆ サンプル3: 水位有・落差0.27 (5f9fc85f)');
 {
+  // 活荷重あり: 浮力考慮1/2/3 + 地震時2ケース。活荷重なしの数値はチェックを外して照合する。
+  // （旧「浮力無視」ケースは水位無しの計算と同一のためサンプル1で照合済み）
   const r = compute(presets.waterDrop());
-  eqStr('ケース数', String(r.cases.length), '10');
-  const c = r.cases;
+  eqStr('ケース数', String(r.cases.length), '5');
+  const inpN = presets.waterDrop();
+  inpN.surcharge.enabled = false;
+  const rN = compute(inpN);
+  eqStr('ケース数(活荷重なし)', String(rN.cases.length), '5');
+  const cS = r.cases;   // [考慮1, 考慮2, 考慮3, 地震(常時土圧), 地震(地震時土圧)] 活荷重あり
+  const cN = rN.cases;  // 同上 活荷重なし
 
   // 揚圧力・水圧
   eq('uP1', r.uplift.uP1, -8.330, 0.001);
@@ -120,78 +136,82 @@ console.log('◆ サンプル3: 水位有・落差0.27 (5f9fc85f)');
   eq('慣性力H・YG', r.inertia.HYG, 0.645, 0.002);
 
   // 土圧: 浮力考慮ケース(水中単重)
-  eq('c2 ΣγA', c[1].ep.sgA, 2.092, 0.003);
-  eq('c2 PA', c[1].ep.PA, 1.100, 0.002);
+  eq('c2 ΣγA', cN[0].ep.sgA, 2.092, 0.003);
+  eq('c2 PA', cN[0].ep.PA, 1.100, 0.002);
   // 地震時土圧
-  eq('c10 ωE', c[9].ep.omega, 51.969, 0.05);
-  eq('c10 ΣγAE', c[9].ep.sgA, 3.458, 0.005);
-  eq('c10 PEA', c[9].ep.PA, 1.833, 0.003);
-  eq('c10 PEAV', c[9].ep.PAV, 0.963, 0.002);
-  eq('c10 PEAH', c[9].ep.PAH, 1.560, 0.002);
+  eq('c10 ωE', cS[4].ep.omega, 51.969, 0.05);
+  eq('c10 ΣγAE', cS[4].ep.sgA, 3.458, 0.005);
+  eq('c10 PEA', cS[4].ep.PA, 1.833, 0.003);
+  eq('c10 PEAV', cS[4].ep.PAV, 0.963, 0.002);
+  eq('c10 PEAH', cS[4].ep.PAH, 1.560, 0.002);
 
-  // 作用力計算結果 (V, H, M)
+  // 作用力計算結果 (V, H, M)（サンプルの浮力考慮1/2/3・地震時の値）
   const VHM = [
-    [11.157, 1.133, 0.596], [7.023, -2.658, -0.570], [7.023, 1.590, 0.523], [7.023, -1.950, -0.480],
-    [12.445, 2.861, 0.583], [8.311, -0.929, -0.583], [8.311, 3.319, 0.510], [8.311, -0.221, -0.493],
-    [11.157, 2.783, 1.241], [11.276, 3.210, 1.291],
+    [cN[0], 7.023, -2.658, -0.570], [cN[1], 7.023, 1.590, 0.523], [cN[2], 7.023, -1.950, -0.480],
+    [cS[0], 8.311, -0.929, -0.583], [cS[1], 8.311, 3.319, 0.510], [cS[2], 8.311, -0.221, -0.493],
+    [cS[3], 11.157, 2.783, 1.241], [cS[4], 11.276, 3.210, 1.291],
   ];
-  VHM.forEach(([V, H, M], i) => {
-    eq(`case${i + 1} V`, c[i].sum.V, V, 0.003);
-    eq(`case${i + 1} H`, c[i].sum.H, H, 0.003);
-    eq(`case${i + 1} M`, c[i].sum.M, M, 0.003);
+  VHM.forEach(([c, V, H, M], i) => {
+    eq(`case${i + 1} V`, c.sum.V, V, 0.003);
+    eq(`case${i + 1} H`, c.sum.H, H, 0.003);
+    eq(`case${i + 1} M`, c.sum.M, M, 0.003);
   });
   // 転倒 |e|
-  const es = [0.053, 0.081, 0.074, 0.068, 0.047, 0.070, 0.061, 0.059, 0.111, 0.115];
-  es.forEach((e, i) => eq(`case${i + 1} |e|`, Math.abs(c[i].sum.e), e, 0.001));
+  const es = [[cN[0], 0.081], [cN[1], 0.074], [cN[2], 0.068], [cS[0], 0.070], [cS[1], 0.061], [cS[2], 0.059], [cS[3], 0.111], [cS[4], 0.115]];
+  es.forEach(([c, e], i) => eq(`case${i + 1} |e|`, Math.abs(c.sum.e), e, 0.001));
   // 滑動
-  const slide = [5.907, null, 2.650, null, 2.610, null, 1.503, null, 2.405, 2.108];
-  slide.forEach((s, i) => {
-    if (s === null) eqStr(`case${i + 1} 滑動算定不能`, String(c[i].sliding.indeterminate), 'true');
-    else eq(`case${i + 1} Hu/H`, c[i].sliding.ratio, s, 0.012);
+  const slide = [[cN[0], null], [cN[1], 2.650], [cN[2], null], [cS[0], null], [cS[1], 1.503], [cS[2], null], [cS[3], 2.405], [cS[4], 2.108]];
+  slide.forEach(([c, s], i) => {
+    if (s === null) eqStr(`case${i + 1} 滑動算定不能`, String(c.sliding.indeterminate), 'true');
+    else eq(`case${i + 1} Hu/H`, c.sliding.ratio, s, 0.012);
   });
   // 支持 qmax
-  const qmax = [25.368, 18.692, 18.032, 17.439, 27.152, 20.842, 19.817, 19.588, 34.388, 35.294];
-  qmax.forEach((q, i) => eq(`case${i + 1} qmax`, c[i].bearing.qmax, q, 0.05));
+  const qmax = [[cN[0], 18.692], [cN[1], 18.032], [cN[2], 17.439], [cS[0], 20.842], [cS[1], 19.817], [cS[2], 19.588], [cS[3], 34.388], [cS[4], 35.294]];
+  qmax.forEach(([c, q], i) => eq(`case${i + 1} qmax`, c.bearing.qmax, q, 0.05));
   // 地震時条件
-  eq('case9 B/n', c[8].overturn.allow, 0.218, 0.001);
-  eqStr('case9 Fs', String(c[8].sliding.Fs), '1.2');
+  eq('case9 B/n', cS[3].overturn.allow, 0.218, 0.001);
+  eqStr('case9 Fs', String(cS[3].sliding.Fs), '1.2');
 }
 
 // ---------------------------------------------------------------
 console.log('◆ サンプル4: 水位有・落差0 (6366e656)');
 {
   const r = compute(presets.waterFlush());
-  const c = r.cases;
+  const inpN = presets.waterFlush();
+  inpN.surcharge.enabled = false;
+  const rN = compute(inpN);
+  const cS = r.cases;   // [考慮1, 考慮2, 考慮3, 地震(常時土圧), 地震(地震時土圧)] 活荷重あり
+  const cN = rN.cases;  // 同上 活荷重なし
   // 土圧（背面水位0 → 浮力考慮でも土圧は同じ）
-  eq('c1 ω', c[0].ep.omega, 61.594, 0.02);
-  eq('c1 ΣγA', c[0].ep.sgA, 5.771, 0.005);
-  eq('c1 PA', c[0].ep.PA, 3.036, 0.003);
-  eq('c5 ΣqB', c[4].ep.sqB, 7.147, 0.01);
-  eq('c5 PA', c[4].ep.PA, 6.795, 0.005);
-  eq('c10 ωE', c[9].ep.omega, 51.938, 0.05);
-  eq('c10 ΣγAE', c[9].ep.sgA, 7.434, 0.01);
-  eq('c10 PEA', c[9].ep.PA, 3.937, 0.005);
+  eq('c1 ω', cN[0].ep.omega, 61.594, 0.02);
+  eq('c1 ΣγA', cN[0].ep.sgA, 5.771, 0.005);
+  eq('c1 PA', cN[0].ep.PA, 3.036, 0.003);
+  eq('c5 ΣqB', cS[0].ep.sqB, 7.147, 0.01);
+  eq('c5 PA', cS[0].ep.PA, 6.795, 0.005);
+  eq('c10 ωE', cS[4].ep.omega, 51.938, 0.05);
+  eq('c10 ΣγAE', cS[4].ep.sgA, 7.434, 0.01);
+  eq('c10 PEA', cS[4].ep.PA, 3.937, 0.005);
 
   const VHM = [
-    [12.127, 2.434, 0.854], [9.399, -1.106, -0.447], [9.399, 2.434, 0.556], [9.399, -1.106, -0.447],
-    [14.373, 5.448, 1.163], [11.645, 1.908, -0.138], [11.645, 5.448, 0.866], [11.645, 1.908, -0.138],
-    [12.127, 4.084, 1.499], [12.382, 5.000, 1.697],
+    [cN[0], 9.399, -1.106, -0.447], [cN[1], 9.399, 2.434, 0.556], [cN[2], 9.399, -1.106, -0.447],
+    [cS[0], 11.645, 1.908, -0.138], [cS[1], 11.645, 5.448, 0.866], [cS[2], 11.645, 1.908, -0.138],
+    [cS[3], 12.127, 4.084, 1.499], [cS[4], 12.382, 5.000, 1.697],
   ];
-  VHM.forEach(([V, H, M], i) => {
-    eq(`case${i + 1} V`, c[i].sum.V, V, 0.004);
-    eq(`case${i + 1} H`, c[i].sum.H, H, 0.004);
-    eq(`case${i + 1} M`, c[i].sum.M, M, 0.004);
+  VHM.forEach(([c, V, H, M], i) => {
+    eq(`case${i + 1} V`, c.sum.V, V, 0.004);
+    eq(`case${i + 1} H`, c.sum.H, H, 0.004);
+    eq(`case${i + 1} M`, c.sum.M, M, 0.004);
   });
-  const es = [0.070, 0.048, 0.059, 0.048, 0.081, 0.012, 0.074, 0.012, 0.124, 0.137];
-  es.forEach((e, i) => eq(`case${i + 1} |e|`, Math.abs(c[i].sum.e), e, 0.001));
-  const slide = [2.989, null, 2.317, null, 1.583, 3.663, 1.283, 3.663, 1.782, 1.486];
-  slide.forEach((s, i) => {
-    if (s === null) eqStr(`case${i + 1} 滑動算定不能`, String(c[i].sliding.indeterminate), 'true');
-    else eq(`case${i + 1} Hu/H`, c[i].sliding.ratio, s, 0.012);
+  const es = [[cN[0], 0.048], [cN[1], 0.059], [cN[2], 0.048], [cS[0], 0.012], [cS[1], 0.074], [cS[2], 0.012], [cS[3], 0.124], [cS[4], 0.137]];
+  es.forEach(([c, e], i) => eq(`case${i + 1} |e|`, Math.abs(c.sum.e), e, 0.001));
+  const slide = [[cN[0], null], [cN[1], 2.317], [cN[2], null], [cS[0], 3.663], [cS[1], 1.283], [cS[2], 3.663], [cS[3], 1.782], [cS[4], 1.486]];
+  slide.forEach(([c, s], i) => {
+    if (s === null) eqStr(`case${i + 1} 滑動算定不能`, String(c.sliding.indeterminate), 'true');
+    else eq(`case${i + 1} Hu/H`, c.sliding.ratio, s, 0.012);
   });
-  eqStr('case7 滑動NG', String(c[6].sliding.ok), 'false');
-  const qmax = [30.459, 20.597, 22.129, 20.597, 38.214, 19.703, 29.884, 19.703, 39.650, 43.338];
-  qmax.forEach((q, i) => eq(`case${i + 1} qmax`, c[i].bearing.qmax, q, 0.05));
+  eqStr('case7 滑動NG', String(cS[1].sliding.ok), 'false');
+  const qmax = [[cN[0], 20.597], [cN[1], 22.129], [cN[2], 20.597], [cS[0], 19.703], [cS[1], 29.884], [cS[2], 19.703], [cS[3], 39.650], [cS[4], 43.338]];
+  qmax.forEach(([c, q], i) => eq(`case${i + 1} qmax`, c.bearing.qmax, q, 0.05));
 }
 
 // ---------------------------------------------------------------
@@ -219,7 +239,7 @@ console.log('◆ 部材計算（自己整合チェック）');
   const inp2 = presets.waterDrop();
   inp2.member.calc = true;
   const r2 = compute(inp2);
-  const m10 = r2.cases[9].member;
+  const m10 = r2.cases[4].member;
   eq('m10 k', m10.k, 1.5, 1e-9);
   eq('m10 σca·k', m10.sigmaCa, 5.25 * 1.5, 1e-9);
   // 揚圧力は部材計算に含まれない（浮力考慮ケースでも N は自重+土圧のみ）
@@ -260,8 +280,9 @@ console.log('◆ 背面土の嵩上げ・勾配（理論解との照合）');
   eq('レベル時PA(既存一致)', pa0, 1.413, 0.002);
   eqStr('嵩上げでPA増加', String(pa03 > pa0 && paInf > pa03), 'true');
 
-  // (3) raise=0 は従来のレベル計算と完全一致（engine経由）
+  // (3) raise=0 は従来のレベル計算と完全一致（engine経由・活荷重なしケースで照合）
   const inp = presets.noWaterDrop();
+  inp.surcharge.enabled = false;
   inp.backfill.raise = 0.3;
   inp.backfill.slopeN = 1.5;
   const re = compute(inp);
@@ -295,8 +316,12 @@ console.log('◆ 追加: 計算条件の組み合わせ（揚圧力・受動土�
   eqStr('ケース数+1', String(r.cases.length), String(base.cases.length + 1));
   const cc = r.cases[r.cases.length - 1];
   eqStr('衝突ケース名', cc.name, '衝突時');
-  eq('衝突時 H = 常時H + P・L', cc.sum.H, base.cases[0].sum.H + 10 * 1.0, 0.001);
-  eq('衝突時 H・y増分 = P・L・h', cc.sum.Hy - base.cases[0].sum.Hy, 8.5, 0.001);
+  // 衝突時ケースは活荷重なしのため、活荷重なしの常時計算と比較する
+  const inpN = presets.noWaterDrop();
+  inpN.surcharge.enabled = false;
+  const baseN = compute(inpN);
+  eq('衝突時 H = 常時H + P・L', cc.sum.H, baseN.cases[0].sum.H + 10 * 1.0, 0.001);
+  eq('衝突時 H・y増分 = P・L・h', cc.sum.Hy - baseN.cases[0].sum.Hy, 8.5, 0.001);
   eq('衝突時 Fs', cc.cond.Fs, 1.2, 1e-9);
   eq('既存ケース V 不変', r.cases[0].sum.V, base.cases[0].sum.V, 1e-9);
   eq('既存ケース H 不変', r.cases[0].sum.H, base.cases[0].sum.H, 1e-9);
@@ -309,7 +334,7 @@ console.log('◆ 追加: 計算条件の組み合わせ（揚圧力・受動土�
   const base = compute(presets.waterDrop());
   eqStr('揚圧力行なし', String(r.cases.some((c) => c.rows.some((row) => row.name === '揚圧力'))), 'false');
   eqStr('比較元は揚圧力行あり', String(base.cases.some((c) => c.rows.some((row) => row.name === '揚圧力'))), 'true');
-  const idx = base.cases.findIndex((c) => c.buoyancy === 2 && !c.surcharge);
+  const idx = base.cases.findIndex((c) => c.buoyancy === 2 && !c.inertia);
   eq('V差 = −UP', r.cases[idx].sum.V - base.cases[idx].sum.V, -base.uplift.UP, 0.001);
   eq('H 不変', r.cases[idx].sum.H, base.cases[idx].sum.H, 1e-9);
 }
@@ -322,6 +347,21 @@ console.log('◆ 追加: 計算条件の組み合わせ（揚圧力・受動土�
   const cc = r.cases[r.cases.length - 1];
   eq('衝突時 割増係数k', cc.member.k, 1.5, 1e-9);
   eqStr('部材作用力に衝突荷重行', String(cc.member.rows.some((row) => row.name === '衝突荷重')), 'true');
+}
+
+// ---------------------------------------------------------------
+console.log('◆ 追加: チェックなし側の変種ケースは生成しない');
+{
+  const r1 = compute(presets.noWaterDrop());   // 活荷重考慮・水位無
+  eqStr('水位無・活荷重考慮 → 1ケース', String(r1.cases.length), '1');
+  eqStr('全ケースが活荷重あり', String(r1.cases.every((c) => c.surcharge)), 'true');
+  const r2 = compute(presets.waterDrop());     // 活荷重・水位・地震を考慮
+  eqStr('水位有 → 浮力考慮3+地震2の5ケース', String(r2.cases.length), '5');
+  eqStr('浮力無視の常時ケースなし', String(r2.cases.some((c) => !c.inertia && c.buoyancy === 0)), 'false');
+  const inp3 = presets.noWaterDrop();
+  inp3.surcharge.enabled = false;              // 全条件チェックなし
+  const r3 = compute(inp3);
+  eqStr('全条件なし → 常時1ケース', String(r3.cases.length === 1 && r3.cases[0].name === '常時'), 'true');
 }
 
 // ---------------------------------------------------------------
