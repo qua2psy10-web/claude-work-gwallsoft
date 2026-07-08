@@ -51,6 +51,9 @@ export function buildBlocks(r) {
   const geom = inp.geometry;
   const water = inp.water.enabled;
   const seismic = inp.seismic.enabled;
+  const upliftOn = water && inp.water.considerUplift !== false;
+  const passiveOn = !!inp.passive?.enabled;
+  const collisionOn = !!inp.collision?.enabled;
   const B = geom.baseWidth;
 
   // ---------------- 第1章 設計条件 ----------------
@@ -146,6 +149,15 @@ export function buildBlocks(r) {
   }
 
   b.sec('計算条件');
+  b.sub('検討条件');
+  b.add(table([['検討項目', '設定']], [
+    ['活荷重', inp.surcharge.enabled ? '考慮する' : '考慮しない'],
+    ['地震時照査', seismic ? '行う' : '行わない'],
+    ['水位', water ? '考慮する' : '考慮しない'],
+    ['揚圧力', !water ? '-（水位無し）' : upliftOn ? '考慮する' : '考慮しない'],
+    ['受動土圧', passiveOn ? '考慮する（滑動抵抗力に加算）' : '考慮しない'],
+    ['衝突荷重', collisionOn ? '考慮する' : '考慮しない'],
+  ]));
   if (seismic) {
     b.sub('設計水平震度');
     b.add(table([['', '躯体', '裏込土']], [
@@ -159,14 +171,24 @@ export function buildBlocks(r) {
     ['安定モーメントの土圧鉛直成分(Pv)', inp.epCondition.considerPv ? '考慮する' : '考慮しない'],
   ]));
 
-  if (inp.surcharge.enabled) {
+  if (inp.surcharge.enabled || collisionOn) {
     b.sec('荷重条件');
-    b.sub('上載荷重');
-    b.add(para('　(1)活荷重'));
-    b.add(table(
-      [['荷重名称', '荷重強度<br>(kN/m2)', 'X1<br>(m)', 'X2<br>(m)']],
-      [[esc(inp.surcharge.name), fmt3(inp.surcharge.q), fmt3(inp.surcharge.x1), fmt3(inp.surcharge.x2)]],
-    ));
+    if (inp.surcharge.enabled) {
+      b.sub('上載荷重');
+      b.add(para('　(1)活荷重'));
+      b.add(table(
+        [['荷重名称', '荷重強度<br>(kN/m2)', 'X1<br>(m)', 'X2<br>(m)']],
+        [[esc(inp.surcharge.name), fmt3(inp.surcharge.q), fmt3(inp.surcharge.x1), fmt3(inp.surcharge.x2)]],
+      ));
+    }
+    if (collisionOn) {
+      b.sub('衝突荷重');
+      b.add(para('　　衝突荷重は擁壁に水平（土圧と同方向）に作用する荷重として、「衝突時」ケースで考慮します。'));
+      b.add(table(
+        [['荷重名称', '荷重強度 P<br>(kN/m)', '作用高さ h<br>(m)', '作用方向']],
+        [[esc(inp.collision.name), fmt3(inp.collision.P), fmt3(inp.collision.h), '前面側（土圧と同方向）']],
+      ));
+    }
   }
 
   b.sec('安定計算条件');
@@ -176,11 +198,24 @@ export function buildBlocks(r) {
     ['許容偏心量の設定方法', `${inp.stability.allowEccMethod}<br><span class="note">(B：底版幅、n：許容偏心量を示す分母値)</span>`],
   ]));
   b.sub('滑動照査の諸条件');
-  b.add(bullets([['有効断面積の取扱い', inp.stability.effectiveArea]]));
+  b.add(bullets([
+    ['有効断面積の取扱い', inp.stability.effectiveArea],
+    ['受動土圧', passiveOn ? '考慮する（ランキン受働土圧を滑動抵抗力に加算）' : '考慮しない'],
+  ]));
   b.add(table([['項目名', '記号', '値', '単位']], [
     ['付着力', 'cB', fmt3(inp.stability.cB), 'kN/m2'],
     ['摩擦係数', 'μ', fmt3(inp.stability.mu), '-'],
   ]));
+  if (passiveOn) {
+    const rows = [
+      ['前載土砂高（常時）', 'h', fmt3(inp.frontSoil.normal), 'm'],
+    ];
+    if (seismic) rows.push(['前載土砂高（地震時）', 'hE', fmt3(inp.frontSoil.seismic), 'm']);
+    rows.push(['前面土砂の単位体積重量', 'γ', fmt3(inp.soil.gammaWet), 'kN/m3']);
+    rows.push(['前面土砂のせん断抵抗角', 'φ', fmt3(inp.soil.phi), '度']);
+    b.add(para('　（受動土圧の算定条件）※前面土砂は背面土砂と同じ土質定数を用います。', 'note'));
+    b.add(table([['項目名', '記号', '値', '単位']], rows));
+  }
   b.sub('支持力照査の諸条件');
   b.add(bullets([['許容支持力度', inp.stability.bearingMethod]]));
 
@@ -214,12 +249,14 @@ export function buildBlocks(r) {
     rows.push(['安定計算', ...cs.map(() => '○')]);
     rows.push(['部材計算', ...cs.map(() => (inp.member.calc ? '○' : '-'))]);
     rows.push(['作用条件　地震時設定', ...cs.map((c) => (c.inertia ? 'LV2地震' : '無し'))]);
+    if (collisionOn) rows.push(['　　　　　衝突荷重', ...cs.map((c) => (c.collision ? '○' : '-'))]);
+    if (passiveOn) rows.push(['　　　　　受動土圧', ...cs.map(() => '考慮')]);
     if (water) {
-      rows.push(['　　　　　揚圧力', ...cs.map((c) => (c.buoyancy > 0 ? '考慮' : '無視'))]);
+      rows.push(['　　　　　揚圧力', ...cs.map((c) => (c.buoyancy > 0 && upliftOn ? '考慮' : '無視'))]);
       rows.push(['水位の扱い　前面水圧', ...cs.map((c) => (c.buoyancy === 1 || c.buoyancy === 3 ? '○' : '-'))]);
       rows.push(['　　　　　　背面水圧', ...cs.map((c) => (c.buoyancy === 2 || c.buoyancy === 3 ? '○' : '-'))]);
     }
-    rows.push(['土圧・慣性力　作用土圧', ...cs.map((c) => (c.ep === 'seismic' ? '地震時土圧' : '常時土圧'))]);
+    rows.push(['土圧・慣性力　作用土圧', ...cs.map((c) => (c.epKind === 'seismic' ? '地震時土圧' : '常時土圧'))]);
     if (seismic) rows.push(['　　　　　　　地震時慣性力', ...cs.map((c) => (c.inertia ? '○' : '-'))]);
     rows.push(['上載荷重　活荷重', ...cs.map((c) => (c.surcharge ? '○' : '-'))]);
     rows.push(['　　　　　活荷重の取扱い', ...cs.map((c) => (c.surcharge ? '全面載荷' : '-'))]);
@@ -228,7 +265,7 @@ export function buildBlocks(r) {
     rows.push(['　　　　　　　許容支持力度', ...cs.map((c) => fmt2(c.cond.qa))]);
     if (inp.member.show || inp.member.calc) {
       rows.push(['部材照査条件　許容応力度', ...cs.map(() => (inp.member.calc ? '基準値' : '-'))]);
-      rows.push(['許容応力度の割増係数', ...cs.map((c) => (inp.member.calc ? fmt2(c.inertia ? inp.member.kSeismic : inp.member.kNormal) : '-'))]);
+      rows.push(['許容応力度の割増係数', ...cs.map((c) => (inp.member.calc ? fmt2(c.inertia || c.collision ? inp.member.kSeismic : inp.member.kNormal) : '-'))]);
     }
     b.add(table(header, rows, 'combo'));
   }
@@ -370,6 +407,22 @@ export function buildBlocks(r) {
     b.add(table(
       [['項目', 'uP1<br>(kN/m2)', 'uP2<br>(kN/m2)', 'B<br>(m)', 'L<br>(m)', 'UP<br>(kN)', 'XG<br>(m)', 'UP･XG<br>(kN・m)']],
       [['揚圧力', fmt3(r.uplift.uP1), fmt3(r.uplift.uP2), fmt3(r.uplift.B), fmt3(r.uplift.L), fmt3(r.uplift.UP), fmt3(r.uplift.XG), fmt3(r.uplift.UPXG)]],
+    ));
+  }
+
+  // ---- 衝突荷重 ----
+  if (collisionOn && r.collision) {
+    const cl = r.collision;
+    b.sec('衝突荷重');
+    b.add(para('　　衝突荷重は、擁壁に水平（土圧と同方向）に作用する荷重として次式より算出します。'));
+    b.add(formula('<div>H ＝ P・L</div>'));
+    b.add(legend([
+      ['H', '衝突荷重による水平力 (kN)'], ['P', '衝突荷重の荷重強度 (kN/m)'],
+      ['L', '躯体延長 (m)'], ['h', '作用高さ（底版下面から） (m)'],
+    ]));
+    b.add(table(
+      [['荷重名称', 'P<br>(kN/m)', 'L<br>(m)', 'H<br>(kN)', 'h<br>(m)', 'H･h<br>(kN・m)']],
+      [[esc(cl.name), fmt3(cl.P), fmt3(cl.L), fmt3(cl.H), fmt3(cl.h), fmt3(cl.HYG)]],
     ));
   }
 
@@ -526,6 +579,29 @@ export function buildBlocks(r) {
     if (r.wpFront) wpBlock(r.wpFront, '常時　前面水圧', 'front');
   }
 
+  // ---- 受動土圧 ----
+  if (passiveOn && r.passiveN) {
+    b.sec('受動土圧');
+    b.add(para('　　前載土砂による受動土圧は、壁面摩擦を無視したランキン受働土圧として次式より算出し、<br>　　滑動照査の抵抗力に加算します。（転倒・支持の照査には考慮しません）'));
+    b.add(formula(
+      `<div>KP ＝ tan<sup>2</sup>(45°+ ${frac('φ', '2')})</div>` +
+      `<div>PP ＝ ( ${frac('1', '2')}・γ・h<sup>2</sup>・KP + 2・c・√<span style="text-decoration:overline">KP</span>・h )・L</div>`,
+    ));
+    b.add(legend([
+      ['PP', '受動土圧による抵抗力 (kN)'], ['KP', '受働土圧係数'],
+      ['γ', '前面土砂の単位体積重量 (kN/m3)'], ['φ', '前面土砂のせん断抵抗角 (度)'],
+      ['c', '前面土砂の粘着力 (kN/m2)'], ['h', '前載土砂高 (m)'], ['L', '土圧の作用幅 (m)'],
+    ]));
+    const ppRows = [['常時', fmt3(r.passiveN.gamma), fmt3(r.passiveN.phi), fmt3(r.passiveN.c), fmt3(r.passiveN.Kp), fmt3(r.passiveN.h), fmt3(r.passiveN.L), fmt3(r.passiveN.PP)]];
+    if (r.passiveE && r.cases.some((c) => c.inertia)) {
+      ppRows.push(['地震時', fmt3(r.passiveE.gamma), fmt3(r.passiveE.phi), fmt3(r.passiveE.c), fmt3(r.passiveE.Kp), fmt3(r.passiveE.h), fmt3(r.passiveE.L), fmt3(r.passiveE.PP)]);
+    }
+    b.add(table(
+      [['種類', 'γ<br>(kN/m3)', 'φ<br>(度)', 'c<br>(kN/m2)', 'KP<br>(-)', 'h<br>(m)', 'L<br>(m)', 'PP<br>(kN)']],
+      ppRows,
+    ));
+  }
+
   // ---- 作用力の集計 ----
   b.sec('作用力の集計');
   b.add(para('　　(1)合力の偏心量とモーメントの計算式'));
@@ -550,9 +626,10 @@ export function buildBlocks(r) {
     if (seismic) rows.push(['躯体慣性力', ...cs.map((c) => (c.inertia ? '○' : '-'))]);
     if (water) {
       rows.push(['背面水重量', ...cs.map((c) => (c.buoyancy > 0 ? '○' : '-'))]);
-      rows.push(['揚圧力', ...cs.map((c) => (c.buoyancy > 0 ? '○' : '-'))]);
+      rows.push(['揚圧力', ...cs.map((c) => (c.buoyancy > 0 && upliftOn ? '○' : '-'))]);
     }
     rows.push(['土圧', ...cs.map(() => '○')]);
+    if (collisionOn) rows.push(['衝突荷重', ...cs.map((c) => (c.collision ? '○' : '-'))]);
     if (water) rows.push(['水圧', ...cs.map((c) => (c.buoyancy > 0 ? '○' : '-'))]);
     b.add(table([[{ t: '種類', rs: 1 }, { t: 'ケースNo', cs: cs.length }], ['', ...cs.map((c) => String(c.no))]], rows, 'combo'));
   }
@@ -621,12 +698,13 @@ export function buildBlocks(r) {
   ]));
   b.add(para('(2)滑動に対する照査方法'));
   b.add(para('　　水平力(H)に対する滑動抵抗力(Hu)が安全率(Fs)を考慮した値を満足しているかの照査を行います。<br>　　なお、底版幅は有効載荷幅(Be)とします。'));
-  b.add(formula(`<div>HU = V・μ + cB・Be・L</div><div>${frac('HU', 'H')} ≧ FS</div>`));
+  b.add(formula(`<div>HU = V・μ + cB・Be・L${passiveOn ? ' + PP' : ''}</div><div>${frac('HU', 'H')} ≧ FS</div>`));
   b.add(legend([
     ['H', '水平力 (kN)'], ['HU', '滑動抵抗力 (kN)'], ['V', '鉛直力 (kN)'],
     ['μ', '擁壁底面と基礎地盤の摩擦係数'], ['cB', '擁壁底面と基礎地盤の付着力 (kN/m2)'],
     ['Be', '有効載荷幅 (m)　Be = B − 2・|e|'], ['B', '擁壁底版幅 (m)'],
     ['e', '合力作用位置の偏心量(底版中心(B/2)からの距離) (m)'], ['L', '擁壁(底版)の延長 (m)'], ['FS', '安全率'],
+    ...(passiveOn ? [['PP', '受動土圧による抵抗力 (kN)']] : []),
   ]));
   b.add(para('(3)支持に対する照査方法'));
   b.add(para('　　「地盤反力度の計算」で算出した地盤反力度の最大値(qmax)が、<br>　　許容支持力度(qa)以下となっているかの照査を行います。'));
@@ -669,20 +747,21 @@ export function buildBlocks(r) {
       ['擁壁(底版)の延長', 'L', 'm', fmt3(c.sliding.L), ''],
       ['底面と地盤の摩擦係数', 'μ', '-', fmt3(c.sliding.mu), ''],
       ['底面と地盤の粘着力', 'cB', 'kN/m2', fmt3(c.sliding.cB), ''],
+      ...(passiveOn ? [['受動土圧による抵抗力', 'PP', 'kN', fmt3(c.sliding.PP), '']] : []),
       ['安全率', 'Fs', '-', fmt3(c.sliding.Fs), ''],
     ]));
     b.add(para('　　(滑動照査)'), { keepNext: true });
+    const slHead = passiveOn
+      ? [['V<br>(kN)', 'H<br>(kN)', 'PP<br>(kN)', 'Hu<br>(kN)', 'Hu/H']]
+      : [['V<br>(kN)', 'H<br>(kN)', 'Hu<br>(kN)', 'Hu/H']];
+    const slRow = (ratio) => (passiveOn
+      ? [fmt3(c.sum.V), fmt3(c.sum.H), fmt3(c.sliding.PP), fmt3(c.sliding.Hu), ratio]
+      : [fmt3(c.sum.V), fmt3(c.sum.H), fmt3(c.sliding.Hu), ratio]);
     if (c.sliding.indeterminate) {
-      b.add(table(
-        [['V<br>(kN)', 'H<br>(kN)', 'Hu<br>(kN)', 'Hu/H']],
-        [[fmt3(c.sum.V), fmt3(c.sum.H), fmt3(c.sliding.Hu), '-']],
-      ));
+      b.add(table(slHead, [slRow('-')]));
       b.add(para('　　 算定不能(水平力が0以下)のため、滑動照査は省略します。'));
     } else {
-      b.add(table(
-        [['V<br>(kN)', 'H<br>(kN)', 'Hu<br>(kN)', 'Hu/H']],
-        [[fmt3(c.sum.V), fmt3(c.sum.H), fmt3(c.sliding.Hu), fmt3(c.sliding.ratio)]],
-      ));
+      b.add(table(slHead, [slRow(fmt3(c.sliding.ratio))]));
       b.add(judge(`　　 Hu/H =　${fmt3(c.sliding.ratio)}　${c.sliding.ok ? '≧' : '＜'}　Fs =　${fmt3(c.sliding.Fs)}`, c.sliding.ok));
     }
     // 支持
@@ -715,7 +794,7 @@ export function buildBlocks(r) {
       ['N', '軸力（断面より上の鉛直力合計） (kN)'], ['S', 'せん断力（断面より上の水平力合計） (kN)'],
       ['e', '軸力の偏心量（断面図心からの距離） (m)'], ['M', '断面図心回りのモーメント (kN・m)'],
       ['σ1,σ2', '前面側・背面側の縁応力度 (kN/m2)'], ['τ', 'せん断応力度 (kN/m2)'],
-      ['k', '許容応力度の割増係数（常時1.00／地震時1.50）'],
+      ['k', '許容応力度の割増係数（常時1.00／地震時・衝突時1.50）'],
     ]));
     b.add(para('　　照査: σc ≦ σca・k、σt ≦ σcta・k、τ ≦ τa・k　（σc:曲げ圧縮、σt:曲げ引張、応力度はN/mm2換算）'));
 

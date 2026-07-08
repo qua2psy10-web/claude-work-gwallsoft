@@ -85,7 +85,7 @@ fieldset legend {
 .row .unit { width: 52px; color: #667; font-size: 11px; }
 .row input[type="checkbox"] { width: auto; }
 .grp { margin-left: 10px; padding-left: 8px; border-left: 3px solid #d7dbe0; }
-.grp.disabled { opacity: .45; pointer-events: none; }
+.grp.disabled, .row.disabled { opacity: .45; pointer-events: none; }
 
 /* ---- プレビュー ---- */
 #preview {

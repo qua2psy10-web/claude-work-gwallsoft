@@ -30,6 +30,17 @@ export function uplift(gammaW, HW1, HW2, B, L) {
   return { gammaW, HW1, HW2, B, L, uP1, uP2, UP, XG, UPXG: UP * XG };
 }
 
+// 受動土圧（ランキン受働土圧・壁面摩擦無視）
+//  Kp = tan²(45°+φ/2),  PP = (1/2・γ・h²・Kp + 2・c・√Kp・h)・L
+export function passivePressure(gamma, phi, c, h, L) {
+  const Kp = Math.tan((45 + phi / 2) * Math.PI / 180) ** 2;
+  const tri = 0.5 * gamma * h * h * Kp;      // 三角形分布分
+  const rect = 2 * c * Math.sqrt(Kp) * h;    // 粘着分（矩形分布）
+  const PP = (tri + rect) * L;
+  const YG = PP > 0 ? (tri * h / 3 + rect * h / 2) / (tri + rect) : 0;
+  return { gamma, phi, c, h, L, Kp, tri, rect, PP, YG };
+}
+
 // 静水圧 PW = 1/2・γw・H^2・L（dir: +1=背面(前方へ押す), -1=前面(抵抗)）
 export function waterPressure(gammaW, H, L, dir) {
   const pw = dir * gammaW * H;

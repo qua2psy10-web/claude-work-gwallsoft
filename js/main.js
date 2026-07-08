@@ -26,8 +26,10 @@ function syncForm() {
     else el.value = v ?? '';
   }
   $('#grp-water').classList.toggle('disabled', !model.water.enabled);
+  $('#row-uplift').classList.toggle('disabled', !model.water.enabled);
   $('#grp-surcharge').classList.toggle('disabled', !model.surcharge.enabled);
   $('#grp-seismic').classList.toggle('disabled', !model.seismic.enabled);
+  $('#grp-collision').classList.toggle('disabled', !model.collision.enabled);
   $('#grp-member').classList.toggle('disabled', !model.member.show && !model.member.calc);
 }
 
@@ -59,6 +61,9 @@ function validate(m) {
   if (!(m.soil.phi > 0 && m.soil.phi < 60)) errs.push('せん断抵抗角φは 0〜60度 の範囲としてください。');
   if (m.backfill.raise < 0) errs.push('嵩上げ高さは 0 以上としてください。');
   if (m.backfill.raise > 0 && !(m.backfill.slopeN > 0)) errs.push('嵩上げ時は法面勾配 1:n の n を正の値としてください。');
+  if (m.collision.enabled && !(m.collision.P >= 0)) errs.push('衝突荷重Pは 0 以上としてください。');
+  if (m.collision.enabled && !(m.collision.h >= 0)) errs.push('衝突荷重の作用高さは 0 以上としてください。');
+  if (m.passive.enabled && (m.frontSoil.normal < 0 || m.frontSoil.seismic < 0)) errs.push('受動土圧考慮時は前載土砂高を 0 以上としてください。');
   return errs;
 }
 
