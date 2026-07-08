@@ -19,10 +19,11 @@ function setPath(obj, path, v) {
 }
 
 // モデル → フォーム
+// data-invert: チェックでモデル値がfalseになる反転チェックボックス（例: 活荷重を考慮しない）
 function syncForm() {
   for (const el of $$('[data-path]')) {
     const v = getPath(model, el.dataset.path);
-    if (el.type === 'checkbox') el.checked = !!v;
+    if (el.type === 'checkbox') el.checked = el.dataset.invert ? !v : !!v;
     else el.value = v ?? '';
   }
   $('#grp-water').classList.toggle('disabled', !model.water.enabled);
@@ -37,7 +38,7 @@ function syncForm() {
 function readForm(el) {
   const path = el.dataset.path;
   let v;
-  if (el.type === 'checkbox') v = el.checked;
+  if (el.type === 'checkbox') v = el.dataset.invert ? !el.checked : el.checked;
   else if (el.type === 'number') {
     v = parseFloat(el.value);
     if (!isFinite(v)) return;
