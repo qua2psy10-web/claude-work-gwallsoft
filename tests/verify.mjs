@@ -270,5 +270,60 @@ console.log('◆ 背面土の嵩上げ・勾配（理論解との照合）');
 }
 
 // ---------------------------------------------------------------
+console.log('◆ 追加: 計算条件の組み合わせ（揚圧力・受動土圧・衝突荷重）');
+{
+  // (1) 受動土圧: φ=30 → Kp = tan²(60°) = 3, PP = 1/2・19・0.5²・3 = 7.125
+  const inp = presets.noWaterDrop();
+  inp.passive.enabled = true;
+  inp.frontSoil.normal = 0.5;
+  const r = compute(inp);
+  const base = compute(presets.noWaterDrop());
+  eq('受動土圧 Kp', r.passiveN.Kp, 3.0, 0.001);
+  eq('受動土圧 PP', r.passiveN.PP, 7.125, 0.001);
+  eq('滑動 Hu増分 = PP', r.cases[0].sliding.Hu - base.cases[0].sliding.Hu, 7.125, 0.001);
+  eq('転倒 e 不変', r.cases[0].sum.e, base.cases[0].sum.e, 1e-9);
+  eq('支持 q1 不変', r.cases[0].reaction.q1, base.cases[0].reaction.q1, 1e-9);
+}
+{
+  // (2) 衝突荷重: 「衝突時」ケースが追加され H・H·y に反映される
+  const inp = presets.noWaterDrop();
+  inp.collision.enabled = true;
+  inp.collision.P = 10;
+  inp.collision.h = 0.85;
+  const r = compute(inp);
+  const base = compute(presets.noWaterDrop());
+  eqStr('ケース数+1', String(r.cases.length), String(base.cases.length + 1));
+  const cc = r.cases[r.cases.length - 1];
+  eqStr('衝突ケース名', cc.name, '衝突時');
+  eq('衝突時 H = 常時H + P・L', cc.sum.H, base.cases[0].sum.H + 10 * 1.0, 0.001);
+  eq('衝突時 H・y増分 = P・L・h', cc.sum.Hy - base.cases[0].sum.Hy, 8.5, 0.001);
+  eq('衝突時 Fs', cc.cond.Fs, 1.2, 1e-9);
+  eq('既存ケース V 不変', r.cases[0].sum.V, base.cases[0].sum.V, 1e-9);
+  eq('既存ケース H 不変', r.cases[0].sum.H, base.cases[0].sum.H, 1e-9);
+}
+{
+  // (3) 揚圧力オフ: 浮力考慮ケースから揚圧力行が外れる（水圧・土圧低減は維持）
+  const inp = presets.waterDrop();
+  inp.water.considerUplift = false;
+  const r = compute(inp);
+  const base = compute(presets.waterDrop());
+  eqStr('揚圧力行なし', String(r.cases.some((c) => c.rows.some((row) => row.name === '揚圧力'))), 'false');
+  eqStr('比較元は揚圧力行あり', String(base.cases.some((c) => c.rows.some((row) => row.name === '揚圧力'))), 'true');
+  const idx = base.cases.findIndex((c) => c.buoyancy === 2 && !c.surcharge);
+  eq('V差 = −UP', r.cases[idx].sum.V - base.cases[idx].sum.V, -base.uplift.UP, 0.001);
+  eq('H 不変', r.cases[idx].sum.H, base.cases[idx].sum.H, 1e-9);
+}
+{
+  // (4) 部材計算: 衝突時は割増係数1.5・衝突荷重行を含む
+  const inp = presets.noWaterDrop();
+  inp.member.calc = true;
+  inp.collision.enabled = true;
+  const r = compute(inp);
+  const cc = r.cases[r.cases.length - 1];
+  eq('衝突時 割増係数k', cc.member.k, 1.5, 1e-9);
+  eqStr('部材作用力に衝突荷重行', String(cc.member.rows.some((row) => row.name === '衝突荷重')), 'true');
+}
+
+// ---------------------------------------------------------------
 console.log(`\n結果: ${pass} 件一致 / ${fail} 件不一致`);
 process.exit(fail === 0 ? 0 : 1);

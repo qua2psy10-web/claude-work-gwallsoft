@@ -6,15 +6,16 @@ export function checkOverturn(e, B, n) {
   return { e, absE: Math.abs(e), B, n, allow, ok: Math.abs(e) <= allow + 1e-9 };
 }
 
-// 滑動照査: Hu = V・μ + cB・Be・L,  Hu/H ≧ Fs（H≦0は算定不能）
-export function checkSliding(V, H, e, B, L, mu, cB, Fs) {
+// 滑動照査: Hu = V・μ + cB・Be・L + PP,  Hu/H ≧ Fs（H≦0は算定不能）
+//  PP: 受動土圧による抵抗力 (kN)。考慮しない場合は0
+export function checkSliding(V, H, e, B, L, mu, cB, Fs, PP = 0) {
   const Be = B - 2 * Math.abs(e);
-  const Hu = V * mu + cB * Be * L;
+  const Hu = V * mu + cB * Be * L + PP;
   if (H <= 1e-9) {
-    return { V, H, e, B, Be, L, mu, cB, Fs, Hu, indeterminate: true, ok: true };
+    return { V, H, e, B, Be, L, mu, cB, Fs, PP, Hu, indeterminate: true, ok: true };
   }
   const ratio = Hu / H;
-  return { V, H, e, B, Be, L, mu, cB, Fs, Hu, ratio, indeterminate: false, ok: ratio >= Fs - 1e-9 };
+  return { V, H, e, B, Be, L, mu, cB, Fs, PP, Hu, ratio, indeterminate: false, ok: ratio >= Fs - 1e-9 };
 }
 
 // 支持照査: qmax ≦ qa

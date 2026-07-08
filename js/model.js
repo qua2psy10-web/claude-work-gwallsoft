@@ -25,6 +25,7 @@ export function defaultInput() {
     frontSoil: { normal: 0.0, seismic: 0.0 }, // 前載土砂高 (m)
     water: {
       enabled: false,
+      considerUplift: true, // 浮力考慮ケースで揚圧力を作用させる
       handling: '揚圧力',
       upliftPosition: '高い位置',
       normal: { front: 0.850, back: 0.380 },  // 常時 前面/背面水位 (m)
@@ -58,6 +59,15 @@ export function defaultInput() {
       x1: 0.081,        // 載荷開始位置 (m) 壁背面天端位置から
       x2: 3.081,        // 載荷終了位置 (m)
     },
+    passive: {
+      enabled: false,   // 前載土砂による受動土圧を滑動抵抗力に加算する
+    },
+    collision: {
+      enabled: false,   // 衝突荷重を考慮した「衝突時」ケースを追加する
+      name: '衝突荷重',
+      P: 10.0,          // 衝突荷重 (kN/m) 壁延長1mあたり
+      h: 0.850,         // 作用高さ (m) 底版下面から
+    },
     stability: {
       overturnMethod: '偏心距離で照査',
       allowEccMethod: 'B/n',
@@ -67,6 +77,7 @@ export function defaultInput() {
       bearingMethod: '入力値を用いる',
       normal: { n: 6.0, Fs: 1.5, qa: 100.0 },
       seismic: { n: 3.0, Fs: 1.2, qa: 150.0 },
+      collision: { n: 3.0, Fs: 1.2, qa: 150.0 },
     },
     member: {
       show: true,                 // 部材計算条件を帳票に出力
@@ -115,12 +126,13 @@ export const presets = {
 };
 
 // 荷重ケースの自動生成
-// ケース定義: { no, name, ep:'normal'|'seismic', surcharge, buoyancy:0|1|2|3, inertia, cond }
+// ケース定義: { no, name, ep:'normal'|'seismic', surcharge, buoyancy:0|1|2|3, inertia, collision, cond }
 //   buoyancy: 0=浮力無視, 1=前面水圧のみ, 2=背面水圧のみ, 3=前背面水圧
 export function generateCases(input) {
   const cases = [];
   const sN = input.stability.normal;
   const sE = input.stability.seismic;
+  const sC = input.stability.collision || input.stability.seismic;
   let no = 1;
 
   const surchargeOpts = input.surcharge.enabled ? [false, true] : [false];
@@ -157,6 +169,15 @@ export function generateCases(input) {
       no: no++, name: '地震時 浮力無視',
       epKind: 'seismic', surcharge: false, buoyancy: input.water.enabled ? 0 : -1,
       inertia: true, cond: sE,
+    });
+  }
+
+  if (input.collision?.enabled) {
+    // 衝突時: 常時土圧＋衝突荷重（浮力無視）
+    cases.push({
+      no: no++, name: input.water.enabled ? '衝突時 浮力無視' : '衝突時',
+      epKind: 'normal', surcharge: false, buoyancy: input.water.enabled ? 0 : -1,
+      inertia: false, collision: true, cond: sC,
     });
   }
   return cases;

@@ -1,7 +1,7 @@
 // 全荷重ケースの一括計算
 import { backFaceAngle } from './geometry.js';
 import { trialWedge } from './earthPressure.js';
-import { selfWeight, bodyInertia, uplift, waterPressure, aggregate, groundReaction } from './forces.js';
+import { selfWeight, bodyInertia, uplift, passivePressure, waterPressure, aggregate, groundReaction } from './forces.js';
 import { checkOverturn, checkSliding, checkBearing } from './stability.js';
 import { memberCheck } from './member.js';
 import { generateCases } from '../model.js';
@@ -17,8 +17,27 @@ export function compute(input) {
   const self = selfWeight(geom, gammaConcrete, input.lengths.body);
   const inertia = input.seismic.enabled ? bodyInertia(self, input.seismic.khBody) : null;
 
-  const up = input.water.enabled
+  const up = input.water.enabled && input.water.considerUplift !== false
     ? uplift(input.soil.gammaW, input.water.normal.front, input.water.normal.back, B, Lbase)
+    : null;
+
+  // 受動土圧（前載土砂・ランキン受働土圧）: 滑動抵抗力に加算する
+  const passiveOn = !!input.passive?.enabled;
+  const ppN = passiveOn
+    ? passivePressure(input.soil.gammaWet, input.soil.phi, input.soil.c, input.frontSoil.normal, input.lengths.ep)
+    : null;
+  const ppE = passiveOn
+    ? passivePressure(input.soil.gammaWet, input.soil.phi, input.soil.cE, input.frontSoil.seismic, input.lengths.ep)
+    : null;
+
+  // 衝突荷重（水平力・土圧と同方向）
+  const col = input.collision?.enabled
+    ? {
+        name: input.collision.name || '衝突荷重',
+        P: input.collision.P, h: input.collision.h, L: input.lengths.body,
+        H: input.collision.P * input.lengths.body,
+        HYG: input.collision.P * input.lengths.body * input.collision.h,
+      }
     : null;
 
   const wpBack = input.water.enabled && input.water.normal.back > 0
@@ -66,6 +85,9 @@ export function compute(input) {
       Vx: input.epCondition.considerPv ? ep.MV : 0,
       H: ep.PAH, Hy: ep.MH,
     });
+    if (cd.collision && col) {
+      rows.push({ name: col.name, V: 0, Vx: 0, H: col.H, Hy: col.HYG });
+    }
     // 水圧: 浮力考慮1=前面のみ, 2=背面のみ, 3=前背面
     if (cd.buoyancy > 0) {
       let PW = 0, PWY = 0;
@@ -77,7 +99,11 @@ export function compute(input) {
     const sum = aggregate(rows, B);
     const reaction = groundReaction(B, Lbase, sum.e, sum.V, sum.M);
     const overturn = checkOverturn(sum.e, B, cd.cond.n);
-    const sliding = checkSliding(sum.V, sum.H, sum.e, B, Lbase, input.stability.mu, input.stability.cB, cd.cond.Fs);
+    const passive = cd.inertia ? ppE : ppN; // 地震時は地震時の前載土砂高・粘着力で算定
+    const sliding = checkSliding(
+      sum.V, sum.H, sum.e, B, Lbase, input.stability.mu, input.stability.cB, cd.cond.Fs,
+      passive ? passive.PP : 0,
+    );
     const bearing = checkBearing(reaction.q1, reaction.q2, cd.cond.qa);
 
     // 部材計算（竪壁付け根の応力度照査）
@@ -111,6 +137,9 @@ export function compute(input) {
         mRows.push({ name: '躯体慣性力', V: 0, Vx: 0, H: inertia.H, Hy: inertia.HYG });
       }
       mRows.push({ name: '土圧', V: epm.PAV, Vx: epm.MV, H: epm.PAH, Hy: epm.MH });
+      if (cd.collision && col) {
+        mRows.push({ name: col.name, V: 0, Vx: 0, H: col.H, Hy: col.HYG });
+      }
       if (cd.buoyancy > 0) {
         let PW = 0, PWY = 0;
         if ((cd.buoyancy === 2 || cd.buoyancy === 3) && wpBack) { PW += wpBack.PW; PWY += wpBack.PWYG; }
@@ -122,11 +151,12 @@ export function compute(input) {
         b: B,
         L: input.lengths.body,
         member: input.member,
-        k: cd.inertia ? input.member.kSeismic : input.member.kNormal,
+        // 衝突時は地震時と同じ割増係数を用いる
+        k: cd.inertia || cd.collision ? input.member.kSeismic : input.member.kNormal,
       });
     }
 
-    return { ...cd, ep, epm, rows, sum, reaction, overturn, sliding, bearing, member };
+    return { ...cd, ep, epm, rows, sum, reaction, overturn, sliding, bearing, member, passive };
   });
 
   const raise = input.backfill?.raise || 0;
@@ -137,6 +167,7 @@ export function compute(input) {
     input, alpha, epHeight, gammaConcrete,
     backfill: { raise, slopeN, beta },
     self, inertia, uplift: up, wpBack, wpFront,
+    passiveN: ppN, passiveE: ppE, collision: col,
     cases,
   };
 }
