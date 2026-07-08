@@ -128,10 +128,11 @@ export const presets = {
 // 荷重ケースの自動生成
 // ケース定義: { no, name, ep:'normal'|'seismic', surcharge, buoyancy:0|1|2|3, inertia, collision, cond }
 //   buoyancy: 0=浮力無視, 1=前面水圧のみ, 2=背面水圧のみ, 3=前背面水圧
-// チェックされた条件の組み合わせのみ計算する。
+// 同一のチェック条件の組み合わせにつき1ケースのみ生成する。
 // チェックなし側の変種（活荷重なし・浮力無視の常時ケース）は生成しない。
-// 地震・衝突はチェック時に地震時・衝突時ケースを追加する（地震時・衝突時は活荷重なし、
-// 地震時は浮力無視で算定する慣行に従う）。
+// 水位チェック時は前背面水圧を考慮した1ケース、地震チェック時は地震時土圧＋慣性力の
+// 1ケースとする。地震・衝突は地震時・衝突時ケースを追加する（地震時・衝突時は
+// 活荷重なし、地震時は浮力無視で算定する慣行に従う）。
 export function generateCases(input) {
   const cases = [];
   const sN = input.stability.normal;
@@ -148,24 +149,17 @@ export function generateCases(input) {
       epKind: 'normal', surcharge: lc, buoyancy: -1, inertia: false, cond: sN,
     });
   } else {
-    for (const b of [1, 2, 3]) {
-      cases.push({
-        no: no++,
-        name: lc ? `常時 活荷重全面載荷 浮力考慮${b}` : `常時 浮力考慮${b}`,
-        epKind: 'normal', surcharge: lc, buoyancy: b, inertia: false, cond: sN,
-      });
-    }
+    cases.push({
+      no: no++,
+      name: lc ? '常時 活荷重全面載荷 浮力考慮' : '常時 浮力考慮',
+      epKind: 'normal', surcharge: lc, buoyancy: 3, inertia: false, cond: sN,
+    });
   }
 
   if (input.seismic.enabled) {
-    // 地震時: 常時土圧+慣性力 / 地震時土圧+慣性力（浮力無視）
+    // 地震時: 地震時土圧+慣性力（浮力無視）
     cases.push({
-      no: no++, name: '地震時 浮力無視',
-      epKind: 'normal', surcharge: false, buoyancy: input.water.enabled ? 0 : -1,
-      inertia: true, cond: sE,
-    });
-    cases.push({
-      no: no++, name: '地震時 浮力無視',
+      no: no++, name: input.water.enabled ? '地震時 浮力無視' : '地震時',
       epKind: 'seismic', surcharge: false, buoyancy: input.water.enabled ? 0 : -1,
       inertia: true, cond: sE,
     });
