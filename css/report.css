@@ -34,6 +34,10 @@
 /* flow-root: 子要素のマージン相殺を防ぎ、計測高さとページ積み上げ高さを一致させる */
 .rpt-block { margin: 0; display: flow-root; }
 
+/* 章・節の見出しはゴシック体（本文は明朝） */
+.rpt-h1, .rpt-h2 {
+  font-family: "Noto Sans JP", "Yu Gothic", "YuGothic", "Hiragino Kaku Gothic ProN", "Meiryo", "MS Gothic", sans-serif;
+}
 .rpt-h1 { font-size: 13pt; font-weight: bold; margin: 2mm 0 2.5mm; }
 .rpt-h2 { font-size: 11pt; font-weight: bold; margin: 2.5mm 0 1.5mm; }
 .rpt-h3 { font-size: 10pt; font-weight: bold; margin: 2mm 0 1mm; padding-left: 3mm; }
