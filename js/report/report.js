@@ -258,8 +258,10 @@ export function buildBlocks(r) {
     }
     rows.push(['土圧・慣性力　作用土圧', ...cs.map((c) => (c.epKind === 'seismic' ? '地震時土圧' : '常時土圧'))]);
     if (seismic) rows.push(['　　　　　　　地震時慣性力', ...cs.map((c) => (c.inertia ? '○' : '-'))]);
-    rows.push(['上載荷重　活荷重', ...cs.map((c) => (c.surcharge ? '○' : '-'))]);
-    rows.push(['　　　　　活荷重の取扱い', ...cs.map((c) => (c.surcharge ? '全面載荷' : '-'))]);
+    if (inp.surcharge.enabled) {
+      rows.push(['上載荷重　活荷重', ...cs.map((c) => (c.surcharge ? '○' : '-'))]);
+      rows.push(['　　　　　活荷重の取扱い', ...cs.map((c) => (c.surcharge ? '全面載荷' : '-'))]);
+    }
     rows.push(['許容偏心量 B/n の n', ...cs.map((c) => fmt2(c.cond.n))]);
     rows.push(['安定照査条件　滑動安全率', ...cs.map((c) => fmt2(c.cond.Fs))]);
     rows.push(['　　　　　　　許容支持力度', ...cs.map((c) => fmt2(c.cond.qa))]);
