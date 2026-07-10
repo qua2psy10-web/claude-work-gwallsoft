@@ -367,5 +367,24 @@ console.log('◆ 追加: チェックなし側の変種ケースは生成しな�
 }
 
 // ---------------------------------------------------------------
+console.log('◆ 追加: 先頭ケース(No.1)の省略');
+{
+  // 省略ONで先頭が消え、残りが繰り上がる（旧No.2→No.1）
+  const base = compute(presets.waterDrop());     // 2ケース: [浮力考慮, 地震時]
+  const inp = presets.waterDrop();
+  inp.loadCase.skipFirst = true;
+  const r = compute(inp);
+  eqStr('省略ON → ケース数-1', String(r.cases.length), String(base.cases.length - 1));
+  eqStr('先頭が旧No.2に', r.cases[0].name, base.cases[1].name);
+  eqStr('番号が1から振り直し', String(r.cases[0].no), '1');
+  eq('数値は旧No.2と一致(V)', r.cases[0].sum.V, base.cases[1].sum.V, 1e-9);
+  // ケースが1つだけのときは省略しない（全消え防止）
+  const inp1 = presets.noWaterDrop();            // 1ケース
+  inp1.loadCase.skipFirst = true;
+  const r1 = compute(inp1);
+  eqStr('1ケースのみ → 省略しない', String(r1.cases.length), '1');
+}
+
+// ---------------------------------------------------------------
 console.log(`\n結果: ${pass} 件一致 / ${fail} 件不一致`);
 process.exit(fail === 0 ? 0 : 1);
