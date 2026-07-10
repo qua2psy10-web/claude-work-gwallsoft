@@ -88,6 +88,9 @@ export function defaultInput() {
       shearIncrease: '考慮しない',
       sigmaCk: 21, sigmaCa: 5.250, sigmaCta: 0.263, tauA: 0.360,
     },
+    loadCase: {
+      skipFirst: false,   // 先頭の荷重ケース(No.1)を省略し、残りの番号を繰り上げる
+    },
     guideline: '道路土工擁壁工指針  平成24年 7月  社団法人  日本道路協会',
   };
 }
@@ -172,6 +175,12 @@ export function generateCases(input) {
       epKind: 'normal', surcharge: false, buoyancy: input.water.enabled ? 0 : -1,
       inertia: false, collision: true, cond: sC,
     });
+  }
+
+  // 先頭の荷重ケース(No.1)を省略し、残りの番号を繰り上げる。
+  // ただしケースが1つしかない場合は省略しない（全ケースが消えるのを防ぐ）。
+  if (input.loadCase?.skipFirst && cases.length > 1) {
+    return cases.slice(1).map((c, i) => ({ ...c, no: i + 1 }));
   }
   return cases;
 }
